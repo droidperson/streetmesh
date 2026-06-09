@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Sequence
 
@@ -20,8 +21,19 @@ def build_parser() -> argparse.ArgumentParser:
         "-c",
         "--config",
         type=Path,
-        default=Path("streetmeshd.ini"),
-        help="path to daemon configuration file (default: %(default)s)",
+        default=None,
+        help="path to JSON daemon configuration file",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        default=None,
+        help="directory for daemon state and identity",
+    )
+    parser.add_argument(
+        "--node-name",
+        default=None,
+        help="local node name",
     )
     parser.add_argument(
         "--check-config",
@@ -39,14 +51,21 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    try:
+        config = load_config(
+            args.config,
+            data_dir=args.data_dir,
+            node_name=args.node_name,
+        )
+    except ConfigError as exc:
+        parser.error(str(exc))
 
     if args.check_config:
-        try:
-            config = load_config(args.config)
-        except ConfigError as exc:
-            parser.error(str(exc))
-        print(f"Configuration OK: {config.path}")
+        source = config.path if config.path is not None else "defaults"
+        print(f"Configuration OK: {source}")
         return 0
 
-    daemon = StreetMeshDaemon(config_path=args.config)
+    daemon = StreetMeshDaemon(config=config)
     return daemon.run()

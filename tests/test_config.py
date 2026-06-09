@@ -1,0 +1,73 @@
+"""Tests for StreetMesh configuration loading."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+from streetmesh.config import DEFAULT_NODE_NAME, ConfigError, load_config
+
+
+class ConfigTests(unittest.TestCase):
+    def test_defaults_without_config_file(self) -> None:
+        config = load_config()
+
+        self.assertIsNone(config.path)
+        self.assertEqual(config.node.node_name, DEFAULT_NODE_NAME)
+        self.assertEqual(config.node.data_dir, Path("data"))
+
+    def test_loads_json_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "node": {
+                            "node_name": "alpha@local@mesh",
+                            "data_dir": "state",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_config(config_path)
+
+            self.assertEqual(config.path, config_path)
+            self.assertEqual(config.node.node_name, "alpha@local@mesh")
+            self.assertEqual(config.node.data_dir, Path("state"))
+
+    def test_cli_overrides_config_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = Path(temp_dir) / "config.json"
+            override_data_dir = Path(temp_dir) / "override-data"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "node": {
+                            "node_name": "alpha@local@mesh",
+                            "data_dir": "state",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_config(
+                config_path,
+                data_dir=override_data_dir,
+                node_name="beta@local@mesh",
+            )
+
+            self.assertEqual(config.node.node_name, "beta@local@mesh")
+            self.assertEqual(config.node.data_dir, override_data_dir)
+
+    def test_empty_node_name_is_invalid(self) -> None:
+        with self.assertRaises(ConfigError):
+            load_config(node_name=" ")
+
+
+if __name__ == "__main__":
+    unittest.main()

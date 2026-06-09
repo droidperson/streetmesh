@@ -1,0 +1,6 @@
+{
+  "node": {
+    "node_name": "node01@local@mesh",
+    "data_dir": "data"
+  }
+}

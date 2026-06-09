@@ -1,6 +1,6 @@
 {
   "id": "streetmesh-dev-node",
-  "display_name": "StreetMesh Development Node",
+  "node_name": "node01@local@mesh",
   "roles": [
     "edge",
     "observer"
