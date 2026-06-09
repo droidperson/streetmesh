@@ -1,0 +1,8 @@
+{
+  "id": "streetmesh-dev-node",
+  "display_name": "StreetMesh Development Node",
+  "roles": [
+    "edge",
+    "observer"
+  ]
+}
