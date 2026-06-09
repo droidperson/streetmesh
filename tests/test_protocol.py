@@ -10,7 +10,9 @@ from streetmesh.protocol import (
     KnowledgeObjectError,
     create_node_knowledge_object,
     decode_knowledge_object,
+    decode_message,
     encode_knowledge_object,
+    encode_message,
     validate_knowledge_object,
 )
 
@@ -75,6 +77,21 @@ class KnowledgeObjectTests(unittest.TestCase):
 
         encoded = encode_knowledge_object(ko)
         decoded = decode_knowledge_object(encoded)
+
+        self.assertIsInstance(encoded, bytes)
+        self.assertEqual(decoded, ko)
+
+    def test_message_aliases_round_trip(self) -> None:
+        now = int(time.time())
+        ko = create_node_knowledge_object(
+            origin="node-a",
+            subject="node-a",
+            payload={"node_name": "node01@local@mesh"},
+            now=now,
+        )
+
+        encoded = encode_message(ko)
+        decoded = decode_message(encoded)
 
         self.assertIsInstance(encoded, bytes)
         self.assertEqual(decoded, ko)

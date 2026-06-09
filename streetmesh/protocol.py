@@ -102,6 +102,10 @@ def decode_knowledge_object(encoded: bytes) -> dict[str, Any]:
     return value
 
 
+encode_message = encode_knowledge_object
+decode_message = decode_knowledge_object
+
+
 def validate_knowledge_object(
     knowledge_object: dict[str, Any],
     *,
