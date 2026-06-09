@@ -6,14 +6,14 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from streetmesh.directory import AwarenessStore
+from streetmesh.directory import AwarenessStore, DuplicateCache
 from streetmesh.protocol import create_node_knowledge_object
 
 
 class AwarenessStoreTests(unittest.TestCase):
     def test_stores_and_looks_up_known_nodes(self) -> None:
         store = AwarenessStore(local_node_id="local-node-id")
-        ko = self._node_ko(
+        ko = _node_ko(
             node_id="remote-node-id",
             node_name="remote@local@mesh",
             seq=1,
@@ -38,7 +38,7 @@ class AwarenessStoreTests(unittest.TestCase):
 
     def test_distinguishes_local_node(self) -> None:
         store = AwarenessStore(local_node_id="local-node-id")
-        ko = self._node_ko(
+        ko = _node_ko(
             node_id="local-node-id",
             node_name="node01@local@mesh",
             seq=1,
@@ -54,13 +54,13 @@ class AwarenessStoreTests(unittest.TestCase):
 
     def test_refreshes_existing_entry_when_newer_node_ko_arrives(self) -> None:
         store = AwarenessStore()
-        first = self._node_ko(
+        first = _node_ko(
             node_id="remote-node-id",
             node_name="remote@local@mesh",
             seq=1,
             now=1_000,
         )
-        second = self._node_ko(
+        second = _node_ko(
             node_id="remote-node-id",
             node_name="remote-renamed@local@mesh",
             seq=2,
@@ -83,13 +83,13 @@ class AwarenessStoreTests(unittest.TestCase):
 
     def test_ignores_older_node_ko(self) -> None:
         store = AwarenessStore()
-        newer = self._node_ko(
+        newer = _node_ko(
             node_id="remote-node-id",
             node_name="remote@local@mesh",
             seq=2,
             now=1_000,
         )
-        older = self._node_ko(
+        older = _node_ko(
             node_id="remote-node-id",
             node_name="stale@local@mesh",
             seq=1,
@@ -108,7 +108,7 @@ class AwarenessStoreTests(unittest.TestCase):
 
     def test_ignores_malformed_node_data(self) -> None:
         store = AwarenessStore()
-        ko = self._node_ko(
+        ko = _node_ko(
             node_id="remote-node-id",
             node_name="remote@local@mesh",
             seq=1,
@@ -125,7 +125,7 @@ class AwarenessStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "awareness.json"
             store = AwarenessStore(path=path)
-            ko = self._node_ko(
+            ko = _node_ko(
                 node_id="remote-node-id",
                 node_name="remote@local@mesh",
                 seq=1,
@@ -142,25 +142,99 @@ class AwarenessStoreTests(unittest.TestCase):
             self.assertEqual(entry.node_name, "remote@local@mesh")
             self.assertEqual(entry.first_seen, 1_001)
 
-    def _node_ko(
-        self,
-        *,
-        node_id: str,
-        node_name: str,
-        seq: int,
-        now: int,
-    ) -> dict[str, object]:
-        return create_node_knowledge_object(
-            origin=node_id,
-            subject=node_name,
-            payload={
-                "node_id": node_id,
-                "node_name": node_name,
-                "fingerprint": "f" * 64,
-            },
-            seq=seq,
-            now=now,
+    def test_ignores_expired_node_knowledge_object(self) -> None:
+        store = AwarenessStore()
+        ko = _node_ko(
+            node_id="remote-node-id",
+            node_name="remote@local@mesh",
+            seq=1,
+            now=1_000,
         )
+
+        update = store.update_from_knowledge_object(ko, now=1_121)
+
+        self.assertEqual(update.status, "ignored")
+        self.assertEqual(store.list_nodes(), [])
+
+    def test_expires_stale_remote_nodes(self) -> None:
+        store = AwarenessStore(local_node_id="local-node-id")
+        remote = _node_ko(
+            node_id="remote-node-id",
+            node_name="remote@local@mesh",
+            seq=1,
+            now=1_000,
+        )
+        local = _node_ko(
+            node_id="local-node-id",
+            node_name="node01@local@mesh",
+            seq=1,
+            now=1_000,
+        )
+        store.update_from_knowledge_object(remote, now=1_001)
+        store.update_from_knowledge_object(local, now=1_001)
+
+        with self.assertLogs("streetmesh.directory", level="INFO") as logs:
+            expired = store.expire_stale(now=1_121)
+
+        self.assertEqual([entry.node_id for entry in expired], ["remote-node-id"])
+        self.assertIsNone(store.get_by_node_id("remote-node-id"))
+        self.assertIsNotNone(store.get_by_node_id("local-node-id"))
+        self.assertEqual(
+            [entry.node_id for entry in store.list_nodes(now=1_121)],
+            ["local-node-id"],
+        )
+        self.assertIn("NODE_EXPIRED", logs.output[0])
+
+
+class DuplicateCacheTests(unittest.TestCase):
+    def test_remembers_new_knowledge_object_ids(self) -> None:
+        cache = DuplicateCache(retention_seconds=300)
+
+        self.assertTrue(cache.remember("ko-1", now=1_000))
+        self.assertIn("ko-1", cache)
+        self.assertEqual(len(cache), 1)
+
+    def test_rejects_duplicate_knowledge_object_ids(self) -> None:
+        cache = DuplicateCache(retention_seconds=300)
+        cache.remember("ko-1", now=1_000)
+
+        with self.assertLogs("streetmesh.directory", level="INFO") as logs:
+            self.assertFalse(cache.remember("ko-1", now=1_001))
+
+        self.assertIn("Duplicate Knowledge Object suppressed", logs.output[0])
+        self.assertEqual(len(cache), 1)
+
+    def test_expires_old_duplicate_cache_entries(self) -> None:
+        cache = DuplicateCache(retention_seconds=300)
+        cache.remember("ko-1", now=1_000)
+
+        self.assertTrue(cache.remember("ko-1", now=1_301))
+
+        self.assertIn("ko-1", cache)
+        self.assertEqual(len(cache), 1)
+
+    def test_rejects_invalid_retention(self) -> None:
+        with self.assertRaisesRegex(ValueError, "retention_seconds"):
+            DuplicateCache(retention_seconds=0)
+
+def _node_ko(
+    *,
+    node_id: str,
+    node_name: str,
+    seq: int,
+    now: int,
+) -> dict[str, object]:
+    return create_node_knowledge_object(
+        origin=node_id,
+        subject=node_name,
+        payload={
+            "node_id": node_id,
+            "node_name": node_name,
+            "fingerprint": "f" * 64,
+        },
+        seq=seq,
+        now=now,
+    )
 
 
 if __name__ == "__main__":

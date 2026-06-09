@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from streetmesh.config import NodeConfig, StreetMeshConfig
-from streetmesh.directory import AwarenessStore
+from streetmesh.directory import AwarenessStore, DuplicateCache
 from streetmesh.daemon import StreetMeshDaemon
 from streetmesh.identity import NodeIdentity
 from streetmesh.protocol import (
@@ -105,7 +105,7 @@ class DaemonAnnouncementTests(unittest.TestCase):
             )
         )
 
-        daemon.receive_once(awareness, transport, timeout=0)
+        daemon.receive_once(awareness, DuplicateCache(), transport, timeout=0)
 
         entry = awareness.get_by_node_id("remote-node-id")
         self.assertIsNotNone(entry)
@@ -120,9 +120,113 @@ class DaemonAnnouncementTests(unittest.TestCase):
         transport.datagrams.append(Datagram(data=b"{not-json", address=("127.0.0.1", 1)))
 
         with self.assertLogs("streetmesh.daemon", level="WARNING"):
-            daemon.receive_once(awareness, transport, timeout=0)
+            daemon.receive_once(awareness, DuplicateCache(), transport, timeout=0)
 
         self.assertEqual(awareness.list_nodes(), [])
+
+    def test_receive_once_suppresses_duplicate_knowledge_objects(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore()
+        duplicate_cache = DuplicateCache()
+        remote_ko = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+        )
+        encoded = encode_knowledge_object(remote_ko)
+        transport.datagrams.extend(
+            [
+                Datagram(data=encoded, address=("127.0.0.1", 40404)),
+                Datagram(data=encoded, address=("127.0.0.1", 40404)),
+            ]
+        )
+
+        daemon.receive_once(awareness, duplicate_cache, transport, timeout=0)
+        with self.assertLogs("streetmesh.directory", level="INFO") as logs:
+            daemon.receive_once(awareness, duplicate_cache, transport, timeout=0)
+
+        self.assertEqual(len(awareness.list_nodes()), 1)
+        self.assertIn("Duplicate Knowledge Object suppressed", logs.output[0])
+
+    def test_receive_once_suppresses_received_self_announcement(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        identity = self._identity()
+        awareness = AwarenessStore(local_node_id=identity.node_id)
+        duplicate_cache = DuplicateCache()
+        awareness.add_local_node(
+            node_id=identity.node_id,
+            node_name=identity.node_name,
+            expires=9_999,
+            now=100,
+        )
+        announcement = create_node_knowledge_object(
+            origin=identity.node_id,
+            subject=identity.node_name,
+            payload={
+                "node_id": identity.node_id,
+                "node_name": identity.node_name,
+                "fingerprint": identity.fingerprint,
+            },
+            seq=1,
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(announcement),
+                address=("127.0.0.1", 40404),
+            )
+        )
+
+        with self.assertLogs("streetmesh.daemon", level="INFO") as logs:
+            daemon.receive_once(awareness, duplicate_cache, transport, timeout=0)
+
+        entry = awareness.get_by_node_id(identity.node_id)
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertTrue(entry.is_local)
+        self.assertEqual(entry.seq, 0)
+        self.assertEqual(entry.last_seen, 100)
+        self.assertEqual(len(duplicate_cache), 0)
+        self.assertIn("Suppressed received self-announcement", logs.output[0])
+
+    def test_receive_loop_expires_stale_awareness(self) -> None:
+        times = iter([0.0, 31.0])
+        daemon = StreetMeshDaemon(
+            self._config(Path("data")),
+            clock=lambda: next(times),
+        )
+        transport = FakeTransport()
+        awareness = AwarenessStore()
+        duplicate_cache = DuplicateCache()
+        remote_ko = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+        )
+        awareness.update_from_knowledge_object(remote_ko)
+        entry = awareness.get_by_node_id("remote-node-id")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        entry.expires = 0
+
+        with self.assertLogs("streetmesh.directory", level="INFO") as logs:
+            daemon._receive_until_next_announcement(
+                awareness,
+                duplicate_cache,
+                transport,
+            )
+
+        self.assertIsNone(awareness.get_by_node_id("remote-node-id"))
+        self.assertIn("NODE_EXPIRED", logs.output[0])
 
     def test_run_stops_cleanly_on_keyboard_interrupt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

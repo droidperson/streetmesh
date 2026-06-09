@@ -38,7 +38,9 @@ python streetmeshd.py
 StreetMesh will create or load `data/identity.json`, broadcast NODE
 announcements over UDP, and continue announcing every 30 seconds until stopped
 with Ctrl+C. Received NODE announcements are tracked in the Awareness Store and
-persisted to `data/awareness.json`.
+persisted to `data/awareness.json`. Duplicate Knowledge Objects are suppressed
+for 300 seconds, and stale remote node awareness is expired when its announced
+expiry time passes.
 
 ## Repository Layout
 

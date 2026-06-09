@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 LOGGER = logging.getLogger(__name__)
 UpdateStatus = Literal["discovered", "refreshed", "ignored"]
+DEFAULT_DUPLICATE_RETENTION = 300
 
 
 @dataclass(frozen=True)
@@ -118,8 +119,11 @@ class AwarenessStore:
             return AwarenessUpdate("ignored", None)
 
         node_id, node_name, expires, seq = node_data
-        is_local = self.local_node_id == node_id
         seen_at = _epoch(now)
+        if seen_at > expires:
+            return AwarenessUpdate("ignored", None)
+
+        is_local = self.local_node_id == node_id
         existing = self._nodes_by_id.get(node_id)
 
         if existing is not None:
@@ -172,8 +176,28 @@ class AwarenessStore:
             return None
         return self._nodes_by_id.get(node_id)
 
-    def list_nodes(self) -> list[NodeEntry]:
+    def list_nodes(self, *, now: int | None = None) -> list[NodeEntry]:
+        if now is not None:
+            self.expire_stale(now=now)
         return sorted(self._nodes_by_id.values(), key=lambda entry: entry.node_name)
+
+    def expire_stale(self, *, now: int | None = None) -> list[NodeEntry]:
+        current_time = _epoch(now)
+        expired: list[NodeEntry] = []
+        for entry in list(self._nodes_by_id.values()):
+            if entry.is_local:
+                continue
+            if current_time > entry.expires:
+                expired.append(entry)
+                self._nodes_by_id.pop(entry.node_id, None)
+                self._node_names.pop(entry.node_name, None)
+                LOGGER.info(
+                    "NODE_EXPIRED node_name=%s node_id=%s expires=%s",
+                    entry.node_name,
+                    entry.node_id,
+                    entry.expires,
+                )
+        return expired
 
     def save(self) -> None:
         if self.path is None:
@@ -227,6 +251,48 @@ class AwarenessStore:
             self._node_names.pop(existing.node_name, None)
         self._nodes_by_id[entry.node_id] = entry
         self._node_names[entry.node_name] = entry.node_id
+
+
+class DuplicateCache:
+    """Recently processed Knowledge Object IDs."""
+
+    def __init__(self, *, retention_seconds: int = DEFAULT_DUPLICATE_RETENTION) -> None:
+        if (
+            not isinstance(retention_seconds, int)
+            or isinstance(retention_seconds, bool)
+            or retention_seconds <= 0
+        ):
+            raise ValueError("retention_seconds must be a positive integer")
+        self.retention_seconds = retention_seconds
+        self._seen: dict[str, int] = {}
+
+    def remember(self, ko_id: object, *, now: int | None = None) -> bool:
+        """Return True for a new ko_id, False for a duplicate."""
+
+        if not isinstance(ko_id, str) or not ko_id.strip():
+            return False
+
+        current_time = _epoch(now)
+        self.expire_old(now=current_time)
+        if ko_id in self._seen:
+            LOGGER.info("Duplicate Knowledge Object suppressed: ko_id=%s", ko_id)
+            return False
+
+        self._seen[ko_id] = current_time
+        return True
+
+    def expire_old(self, *, now: int | None = None) -> None:
+        current_time = _epoch(now)
+        cutoff = current_time - self.retention_seconds
+        for ko_id, seen_at in list(self._seen.items()):
+            if seen_at <= cutoff:
+                self._seen.pop(ko_id, None)
+
+    def __contains__(self, ko_id: object) -> bool:
+        return isinstance(ko_id, str) and ko_id in self._seen
+
+    def __len__(self) -> int:
+        return len(self._seen)
 
 
 def _node_data_from_knowledge_object(

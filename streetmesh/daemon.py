@@ -7,7 +7,7 @@ import time
 from typing import Callable, Protocol
 
 from .config import StreetMeshConfig
-from .directory import AwarenessStore
+from .directory import AwarenessStore, DuplicateCache
 from .identity import IdentityError, NodeIdentity, load_or_create_identity
 from .protocol import (
     KnowledgeObjectError,
@@ -67,6 +67,7 @@ class StreetMeshDaemon:
             self.config.node.data_dir / "awareness.json",
             local_node_id=identity.node_id,
         )
+        duplicate_cache = DuplicateCache()
         awareness.add_local_node(
             node_id=identity.node_id,
             node_name=identity.node_name,
@@ -84,8 +85,14 @@ class StreetMeshDaemon:
 
         try:
             while True:
-                self.announce_once(identity, transport)
-                self._receive_until_next_announcement(awareness, transport)
+                announcement = self.announce_once(identity, transport)
+                awareness.update_from_knowledge_object(announcement)
+                awareness.save()
+                self._receive_until_next_announcement(
+                    awareness,
+                    duplicate_cache,
+                    transport,
+                )
         except KeyboardInterrupt:
             LOGGER.info("StreetMesh shutdown requested; stopping cleanly.")
             return 0
@@ -130,6 +137,7 @@ class StreetMeshDaemon:
     def receive_once(
         self,
         awareness: AwarenessStore,
+        duplicate_cache: DuplicateCache,
         transport: AnnouncementTransport,
         *,
         timeout: float | None = None,
@@ -149,6 +157,17 @@ class StreetMeshDaemon:
             )
             return
 
+        if knowledge_object.get("origin") == awareness.local_node_id:
+            LOGGER.info(
+                "Suppressed received self-announcement: node_id=%s ko_id=%s",
+                awareness.local_node_id,
+                knowledge_object.get("ko_id"),
+            )
+            return
+
+        if not duplicate_cache.remember(knowledge_object.get("ko_id")):
+            return
+
         update = awareness.update_from_knowledge_object(knowledge_object)
         if update.status != "ignored":
             awareness.save()
@@ -156,14 +175,22 @@ class StreetMeshDaemon:
     def _receive_until_next_announcement(
         self,
         awareness: AwarenessStore,
+        duplicate_cache: DuplicateCache,
         transport: AnnouncementTransport,
     ) -> None:
         deadline = self._clock() + self.config.node.announce_interval
         while True:
+            if awareness.expire_stale():
+                awareness.save()
             remaining = deadline - self._clock()
             if remaining <= 0:
                 return
-            self.receive_once(awareness, transport, timeout=min(1.0, remaining))
+            self.receive_once(
+                awareness,
+                duplicate_cache,
+                transport,
+                timeout=min(1.0, remaining),
+            )
 
     @staticmethod
     def _create_udp_transport(config: StreetMeshConfig) -> UDPTransport:

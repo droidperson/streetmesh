@@ -1,22 +1,22 @@
 {
   "nodes": [
     {
-      "expires": 1781023823,
-      "first_seen": 1781023652,
+      "expires": 1781024869,
+      "first_seen": 1781024739,
       "is_local": true,
-      "last_seen": 1781023703,
+      "last_seen": 1781024749,
       "node_id": "8c024cfe-9b9b-47b0-a152-9d7b3a59f10e",
       "node_name": "nodeA@local@mesh",
-      "seq": 11
+      "seq": 3
     },
     {
-      "expires": 1781023824,
-      "first_seen": 1781023664,
+      "expires": 1781024869,
+      "first_seen": 1781024744,
       "is_local": false,
-      "last_seen": 1781023704,
+      "last_seen": 1781024749,
       "node_id": "770de7e8-f5e3-424f-b7a1-f40176db61c0",
       "node_name": "nodeB@local@mesh",
-      "seq": 9
+      "seq": 2
     }
   ]
 }
