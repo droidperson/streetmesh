@@ -17,6 +17,8 @@ class ConfigTests(unittest.TestCase):
         self.assertIsNone(config.path)
         self.assertEqual(config.node.node_name, DEFAULT_NODE_NAME)
         self.assertEqual(config.node.data_dir, Path("data"))
+        self.assertEqual(config.node.announce_interval, 30)
+        self.assertEqual(config.node.udp_port, 40404)
 
     def test_loads_json_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -27,6 +29,10 @@ class ConfigTests(unittest.TestCase):
                         "node": {
                             "node_name": "alpha@local@mesh",
                             "data_dir": "state",
+                            "announce_interval": 5,
+                            "udp_port": 40405,
+                            "bind_host": "127.0.0.1",
+                            "broadcast_host": "127.0.0.1",
                         }
                     }
                 ),
@@ -38,6 +44,10 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.path, config_path)
             self.assertEqual(config.node.node_name, "alpha@local@mesh")
             self.assertEqual(config.node.data_dir, Path("state"))
+            self.assertEqual(config.node.announce_interval, 5)
+            self.assertEqual(config.node.udp_port, 40405)
+            self.assertEqual(config.node.bind_host, "127.0.0.1")
+            self.assertEqual(config.node.broadcast_host, "127.0.0.1")
 
     def test_cli_overrides_config_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -59,14 +69,22 @@ class ConfigTests(unittest.TestCase):
                 config_path,
                 data_dir=override_data_dir,
                 node_name="beta@local@mesh",
+                announce_interval=9,
+                udp_port=40406,
             )
 
             self.assertEqual(config.node.node_name, "beta@local@mesh")
             self.assertEqual(config.node.data_dir, override_data_dir)
+            self.assertEqual(config.node.announce_interval, 9)
+            self.assertEqual(config.node.udp_port, 40406)
 
     def test_empty_node_name_is_invalid(self) -> None:
         with self.assertRaises(ConfigError):
             load_config(node_name=" ")
+
+    def test_invalid_announce_interval_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ConfigError, "announce_interval"):
+            load_config(announce_interval=0)
 
 
 if __name__ == "__main__":

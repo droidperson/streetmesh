@@ -36,6 +36,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="local node name",
     )
     parser.add_argument(
+        "--announce-interval",
+        type=int,
+        default=None,
+        help="seconds between NODE announcements",
+    )
+    parser.add_argument(
+        "--udp-port",
+        type=int,
+        default=None,
+        help="UDP port to bind and broadcast announcements on",
+    )
+    parser.add_argument(
         "--check-config",
         action="store_true",
         help="load and validate configuration, then exit",
@@ -58,6 +70,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.config,
             data_dir=args.data_dir,
             node_name=args.node_name,
+            announce_interval=args.announce_interval,
+            udp_port=args.udp_port,
         )
     except ConfigError as exc:
         parser.error(str(exc))

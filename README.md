@@ -35,6 +35,10 @@ Run with defaults:
 python streetmeshd.py
 ```
 
+StreetMesh will create or load `data/identity.json`, broadcast NODE
+announcements over UDP, and continue announcing every 30 seconds until stopped
+with Ctrl+C.
+
 ## Repository Layout
 
 ```text
@@ -42,12 +46,13 @@ streetmeshd.py                 Daemon entry point
 streetmesh/                    StreetMesh package
   cli.py                       Command-line interface
   config.py                    Configuration loading and validation
-  daemon.py                    Daemon lifecycle placeholder
+  daemon.py                    Daemon lifecycle and NODE announcements
   identity.py                  Node identity loading and creation
   protocol.py                  Protocol constants placeholder
   routing.py                   Routing table placeholder
   storage.py                   Local state placeholder
-  transport.py                 Transport placeholder, no networking yet
+  transport.py                 Null transport placeholder
+  transport_udp.py             UDP byte transport
 examples/
   config.example.json          Example daemon configuration
   node.example.json            Example node metadata
