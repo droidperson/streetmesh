@@ -7,22 +7,39 @@ import tempfile
 import unittest
 
 from streetmesh.config import NodeConfig, StreetMeshConfig
+from streetmesh.directory import AwarenessStore
 from streetmesh.daemon import StreetMeshDaemon
 from streetmesh.identity import NodeIdentity
-from streetmesh.protocol import decode_knowledge_object
+from streetmesh.protocol import (
+    create_node_knowledge_object,
+    decode_knowledge_object,
+    encode_knowledge_object,
+)
+from streetmesh.transport_udp import Datagram
 
 
 class FakeTransport:
     def __init__(self) -> None:
         self.broadcasts: list[tuple[bytes, int, str | None]] = []
+        self.datagrams: list[Datagram] = []
         self.closed = False
 
     def send_broadcast(self, data: bytes, *, port: int, host: str | None = None) -> int:
         self.broadcasts.append((data, port, host))
         return len(data)
 
+    def receive(self, *, timeout: float | None = None) -> Datagram | None:
+        if self.datagrams:
+            return self.datagrams.pop(0)
+        return None
+
     def close(self) -> None:
         self.closed = True
+
+
+class InterruptingTransport(FakeTransport):
+    def receive(self, *, timeout: float | None = None) -> Datagram | None:
+        raise KeyboardInterrupt
 
 
 class DaemonAnnouncementTests(unittest.TestCase):
@@ -68,21 +85,56 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertEqual(first["seq"], 1)
         self.assertEqual(second["seq"], 2)
 
+    def test_receive_once_updates_awareness_store_for_node_ko(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        remote_ko = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(remote_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+
+        daemon.receive_once(awareness, transport, timeout=0)
+
+        entry = awareness.get_by_node_id("remote-node-id")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.node_name, "remote@local@mesh")
+        self.assertFalse(entry.is_local)
+
+    def test_receive_once_ignores_invalid_datagrams(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore()
+        transport.datagrams.append(Datagram(data=b"{not-json", address=("127.0.0.1", 1)))
+
+        with self.assertLogs("streetmesh.daemon", level="WARNING"):
+            daemon.receive_once(awareness, transport, timeout=0)
+
+        self.assertEqual(awareness.list_nodes(), [])
+
     def test_run_stops_cleanly_on_keyboard_interrupt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            transport = FakeTransport()
+            transport = InterruptingTransport()
             config = self._config(Path(temp_dir))
 
-            def make_transport(_config: StreetMeshConfig) -> FakeTransport:
+            def make_transport(_config: StreetMeshConfig) -> InterruptingTransport:
                 return transport
-
-            def interrupt(_seconds: float) -> None:
-                raise KeyboardInterrupt
 
             daemon = StreetMeshDaemon(
                 config,
                 transport_factory=make_transport,
-                sleep=interrupt,
             )
 
             exit_code = daemon.run()

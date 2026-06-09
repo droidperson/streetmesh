@@ -37,7 +37,8 @@ python streetmeshd.py
 
 StreetMesh will create or load `data/identity.json`, broadcast NODE
 announcements over UDP, and continue announcing every 30 seconds until stopped
-with Ctrl+C.
+with Ctrl+C. Received NODE announcements are tracked in the Awareness Store and
+persisted to `data/awareness.json`.
 
 ## Repository Layout
 
@@ -47,6 +48,7 @@ streetmesh/                    StreetMesh package
   cli.py                       Command-line interface
   config.py                    Configuration loading and validation
   daemon.py                    Daemon lifecycle and NODE announcements
+  directory.py                 Awareness Store for known nodes
   identity.py                  Node identity loading and creation
   protocol.py                  Protocol constants placeholder
   routing.py                   Routing table placeholder

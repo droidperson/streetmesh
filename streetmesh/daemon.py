@@ -7,9 +7,15 @@ import time
 from typing import Callable, Protocol
 
 from .config import StreetMeshConfig
+from .directory import AwarenessStore
 from .identity import IdentityError, NodeIdentity, load_or_create_identity
-from .protocol import create_node_knowledge_object, encode_knowledge_object
-from .transport_udp import UDPTransport, UDPTransportError
+from .protocol import (
+    KnowledgeObjectError,
+    create_node_knowledge_object,
+    decode_knowledge_object,
+    encode_knowledge_object,
+)
+from .transport_udp import Datagram, UDPTransport, UDPTransportError
 
 
 LOGGER = logging.getLogger(__name__)
@@ -18,6 +24,9 @@ LOGGER = logging.getLogger(__name__)
 class AnnouncementTransport(Protocol):
     def send_broadcast(self, data: bytes, *, port: int, host: str | None = None) -> int:
         """Broadcast bytes."""
+
+    def receive(self, *, timeout: float | None = None) -> Datagram | None:
+        """Receive bytes."""
 
     def close(self) -> None:
         """Close the transport."""
@@ -31,11 +40,11 @@ class StreetMeshDaemon:
         config: StreetMeshConfig,
         *,
         transport_factory: Callable[[StreetMeshConfig], AnnouncementTransport] | None = None,
-        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.config = config
         self._transport_factory = transport_factory or self._create_udp_transport
-        self._sleep = sleep
+        self._clock = clock
         self._seq = 0
 
     def run(self) -> int:
@@ -54,6 +63,17 @@ class StreetMeshDaemon:
             print(f"UDP transport error: {exc}")
             return 1
 
+        awareness = AwarenessStore.load(
+            self.config.node.data_dir / "awareness.json",
+            local_node_id=identity.node_id,
+        )
+        awareness.add_local_node(
+            node_id=identity.node_id,
+            node_name=identity.node_name,
+            expires=int(time.time()) + 120,
+        )
+        awareness.save()
+
         LOGGER.info(
             "StreetMesh node started: node_name=%s node_id=%s udp_port=%s",
             identity.node_name,
@@ -65,7 +85,7 @@ class StreetMeshDaemon:
         try:
             while True:
                 self.announce_once(identity, transport)
-                self._sleep(self.config.node.announce_interval)
+                self._receive_until_next_announcement(awareness, transport)
         except KeyboardInterrupt:
             LOGGER.info("StreetMesh shutdown requested; stopping cleanly.")
             return 0
@@ -106,6 +126,44 @@ class StreetMeshDaemon:
             knowledge_object["expires"],
         )
         return knowledge_object
+
+    def receive_once(
+        self,
+        awareness: AwarenessStore,
+        transport: AnnouncementTransport,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        datagram = transport.receive(timeout=timeout)
+        if datagram is None:
+            return
+
+        try:
+            knowledge_object = decode_knowledge_object(datagram.data)
+        except KnowledgeObjectError as exc:
+            LOGGER.warning(
+                "Ignored invalid Knowledge Object from %s:%s: %s",
+                datagram.address[0],
+                datagram.address[1],
+                exc,
+            )
+            return
+
+        update = awareness.update_from_knowledge_object(knowledge_object)
+        if update.status != "ignored":
+            awareness.save()
+
+    def _receive_until_next_announcement(
+        self,
+        awareness: AwarenessStore,
+        transport: AnnouncementTransport,
+    ) -> None:
+        deadline = self._clock() + self.config.node.announce_interval
+        while True:
+            remaining = deadline - self._clock()
+            if remaining <= 0:
+                return
+            self.receive_once(awareness, transport, timeout=min(1.0, remaining))
 
     @staticmethod
     def _create_udp_transport(config: StreetMeshConfig) -> UDPTransport:
