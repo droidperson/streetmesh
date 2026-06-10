@@ -4,9 +4,10 @@ A distributed awareness layer for autonomous edge systems.
 
 ## Status
 
-StreetMesh v0.1 has completed Milestone 7. Nodes broadcast NODE Knowledge
+StreetMesh v0.1 has completed Milestone 8. Nodes broadcast NODE Knowledge
 Objects over UDP, maintain a persistent Awareness Store, suppress duplicate
-objects, refresh known nodes, and expire stale remote nodes.
+objects, refresh and expire known nodes, and gossip accepted remote objects
+with a decreasing hop TTL.
 
 ## Requirements
 
@@ -49,6 +50,7 @@ streetmesh/                    StreetMesh package
   config.py                    Configuration loading and validation
   daemon.py                    Daemon lifecycle and NODE announcements
   directory.py                 Awareness Store for known nodes
+  gossip.py                    Gossip forwarding policy
   identity.py                  Node identity loading and creation
   protocol.py                  Protocol constants placeholder
   routing.py                   Routing table placeholder
@@ -64,6 +66,8 @@ tools/
 docs/
   milestone-7-two-node-discovery.md
                                Manual two-node acceptance procedure
+  milestone-8-three-node-gossip.md
+                               Manual three-node gossip procedure
 ```
 
 ## Milestone 7 Acceptance Test
@@ -79,7 +83,13 @@ python tools/two_node_discovery.py
 The live network steps remain manual because UDP broadcast behavior depends on
 the host network and firewall. The helper's artifact checks are unit tested.
 
+## Milestone 8 Acceptance Test
+
+Follow the documented
+[three-node gossip manual test](docs/milestone-8-three-node-gossip.md) to verify
+that an isolated Node C learns about Node A through Node B with TTL reduction.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Gossip, services, trust, and
-quarantine are not implemented in Milestone 7.
+StreetMesh v0.1 remains dependency-free. Services, trust, and quarantine are
+not implemented in Milestone 8.

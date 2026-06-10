@@ -70,10 +70,14 @@ def create_node_knowledge_object(
     return knowledge_object
 
 
-def encode_knowledge_object(knowledge_object: dict[str, Any]) -> bytes:
+def encode_knowledge_object(
+    knowledge_object: dict[str, Any],
+    *,
+    now: int | None = None,
+) -> bytes:
     """Validate and encode a Knowledge Object as UTF-8 JSON."""
 
-    validate_knowledge_object(knowledge_object)
+    validate_knowledge_object(knowledge_object, now=now)
     return json.dumps(
         knowledge_object,
         ensure_ascii=False,
@@ -138,7 +142,7 @@ def validate_knowledge_object(
     created = _validate_epoch_seconds("created", knowledge_object["created"])
     expires = _validate_epoch_seconds("expires", knowledge_object["expires"])
     _validate_non_negative_integer("seq", knowledge_object["seq"])
-    ttl = _validate_ttl(knowledge_object["ttl"])
+    _validate_ttl(knowledge_object["ttl"])
 
     if expires < created:
         raise KnowledgeObjectError("expires must not be earlier than created")
@@ -190,8 +194,8 @@ def _validate_non_negative_integer(field: str, value: object) -> int:
 
 
 def _validate_ttl(value: object) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise KnowledgeObjectError("ttl must be a positive integer")
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise KnowledgeObjectError("ttl must be a non-negative integer")
     return value
 
 

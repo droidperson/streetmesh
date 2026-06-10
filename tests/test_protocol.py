@@ -118,9 +118,15 @@ class KnowledgeObjectTests(unittest.TestCase):
         with self.assertRaisesRegex(KnowledgeObjectError, "expired"):
             validate_knowledge_object(ko, now=1_700_000_002)
 
-    def test_rejects_invalid_ttl(self) -> None:
+    def test_accepts_zero_ttl_as_terminal_hop(self) -> None:
         ko = self._valid_ko()
         ko["ttl"] = 0
+
+        validate_knowledge_object(ko, now=1_700_000_000)
+
+    def test_rejects_negative_ttl(self) -> None:
+        ko = self._valid_ko()
+        ko["ttl"] = -1
 
         with self.assertRaisesRegex(KnowledgeObjectError, "ttl"):
             validate_knowledge_object(ko, now=1_700_000_000)

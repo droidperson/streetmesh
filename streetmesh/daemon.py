@@ -8,6 +8,7 @@ from typing import Callable, Protocol
 
 from .config import StreetMeshConfig
 from .directory import AwarenessStore, DuplicateCache
+from .gossip import GossipForwarder
 from .identity import IdentityError, NodeIdentity, load_or_create_identity
 from .protocol import (
     KnowledgeObjectError,
@@ -33,7 +34,7 @@ class AnnouncementTransport(Protocol):
 
 
 class StreetMeshDaemon:
-    """StreetMesh daemon runtime for local NODE announcements."""
+    """StreetMesh daemon runtime for NODE announcements and gossip."""
 
     def __init__(
         self,
@@ -68,6 +69,12 @@ class StreetMeshDaemon:
             local_node_id=identity.node_id,
         )
         duplicate_cache = DuplicateCache()
+        gossip = GossipForwarder(
+            local_node_id=identity.node_id,
+            transport=transport,
+            port=self.config.node.udp_port,
+            host=self.config.node.broadcast_host,
+        )
         awareness.add_local_node(
             node_id=identity.node_id,
             node_name=identity.node_name,
@@ -92,6 +99,7 @@ class StreetMeshDaemon:
                     awareness,
                     duplicate_cache,
                     transport,
+                    gossip,
                 )
         except KeyboardInterrupt:
             LOGGER.info("StreetMesh shutdown requested; stopping cleanly.")
@@ -140,6 +148,7 @@ class StreetMeshDaemon:
         duplicate_cache: DuplicateCache,
         transport: AnnouncementTransport,
         *,
+        gossip: GossipForwarder | None = None,
         timeout: float | None = None,
     ) -> None:
         datagram = transport.receive(timeout=timeout)
@@ -171,12 +180,15 @@ class StreetMeshDaemon:
         update = awareness.update_from_knowledge_object(knowledge_object)
         if update.status != "ignored":
             awareness.save()
+            if gossip is not None:
+                gossip.forward(knowledge_object)
 
     def _receive_until_next_announcement(
         self,
         awareness: AwarenessStore,
         duplicate_cache: DuplicateCache,
         transport: AnnouncementTransport,
+        gossip: GossipForwarder | None = None,
     ) -> None:
         deadline = self._clock() + self.config.node.announce_interval
         while True:
@@ -189,6 +201,7 @@ class StreetMeshDaemon:
                 awareness,
                 duplicate_cache,
                 transport,
+                gossip=gossip,
                 timeout=min(1.0, remaining),
             )
 

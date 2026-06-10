@@ -9,6 +9,7 @@ import unittest
 from streetmesh.config import NodeConfig, StreetMeshConfig
 from streetmesh.directory import AwarenessStore, DuplicateCache
 from streetmesh.daemon import StreetMeshDaemon
+from streetmesh.gossip import GossipForwarder
 from streetmesh.identity import NodeIdentity
 from streetmesh.protocol import (
     create_node_knowledge_object,
@@ -112,6 +113,93 @@ class DaemonAnnouncementTests(unittest.TestCase):
         assert entry is not None
         self.assertEqual(entry.node_name, "remote@local@mesh")
         self.assertFalse(entry.is_local)
+
+    def test_receive_once_forwards_accepted_remote_node_ko(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        remote_ko = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+            ttl=3,
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(remote_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        gossip = GossipForwarder(
+            local_node_id=awareness.local_node_id or "",
+            transport=transport,
+            port=40404,
+            host="127.0.0.1",
+        )
+
+        daemon.receive_once(
+            awareness,
+            DuplicateCache(),
+            transport,
+            gossip=gossip,
+            timeout=0,
+        )
+
+        self.assertEqual(len(transport.broadcasts), 1)
+        forwarded = decode_knowledge_object(transport.broadcasts[0][0])
+        self.assertEqual(forwarded["ko_id"], remote_ko["ko_id"])
+        self.assertEqual(forwarded["ttl"], 2)
+
+    def test_receive_once_does_not_forward_ignored_older_node_ko(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        newer = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+            seq=2,
+        )
+        older = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+            seq=1,
+        )
+        awareness.update_from_knowledge_object(newer)
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(older),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        gossip = GossipForwarder(
+            local_node_id=awareness.local_node_id or "",
+            transport=transport,
+            port=40404,
+        )
+
+        daemon.receive_once(
+            awareness,
+            DuplicateCache(),
+            transport,
+            gossip=gossip,
+            timeout=0,
+        )
+
+        self.assertEqual(transport.broadcasts, [])
 
     def test_receive_once_ignores_invalid_datagrams(self) -> None:
         daemon = StreetMeshDaemon(self._config(Path("data")))
