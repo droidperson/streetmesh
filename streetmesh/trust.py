@@ -39,10 +39,16 @@ class TrustStore:
         self._entries: dict[str, TrustEntry] = {}
 
     @classmethod
-    def load(cls, path: Path) -> "TrustStore":
+    def load(
+        cls,
+        path: Path,
+        *,
+        create_if_missing: bool = True,
+    ) -> "TrustStore":
         store = cls(path)
         if not path.exists():
-            store.save()
+            if create_if_missing:
+                store.save()
             return store
         try:
             with path.open("r", encoding="utf-8") as trust_file:

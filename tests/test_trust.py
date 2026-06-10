@@ -42,6 +42,15 @@ class TrustStoreTests(unittest.TestCase):
 
             self.assertTrue(path.exists())
 
+    def test_read_only_load_does_not_create_missing_store(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "trust.json"
+
+            store = TrustStore.load(path, create_if_missing=False)
+
+            self.assertEqual(store.list_entries(), [])
+            self.assertFalse(path.exists())
+
     def test_supports_all_declared_trust_states(self) -> None:
         store = TrustStore()
 

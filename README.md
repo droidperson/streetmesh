@@ -4,12 +4,21 @@ A distributed awareness layer for autonomous edge systems.
 
 ## Status
 
-StreetMesh v0.1 has completed Milestone 10. Nodes broadcast NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 11. Nodes broadcast NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
 trust keeps unknown awareness visible without treating it as automatically
 trusted.
+
+Persisted state can be inspected without starting the daemon:
+
+```sh
+python streetmeshd.py --status
+python streetmeshd.py --list-nodes
+python streetmeshd.py --list-services
+python streetmeshd.py --list-trust
+```
 
 ## Requirements
 
@@ -55,6 +64,7 @@ streetmesh/                    StreetMesh package
   directory.py                 Awareness Store for nodes and services
   gossip.py                    Gossip forwarding policy
   identity.py                  Node identity loading and creation
+  inspection.py                Persisted-state CLI formatting
   protocol.py                  Knowledge Object creation and validation
   policy.py                    Review-mode claim decisions
   quarantine.py                Quarantined claim persistence
@@ -80,6 +90,8 @@ docs/
                                Manual service advertisement procedure
   milestone-10-trust-and-quarantine.md
                                Manual trust and quarantine procedure
+  milestone-11-cli-inspection.md
+                               CLI inspection reference
 ```
 
 ## Milestone 7 Acceptance Test
@@ -115,8 +127,13 @@ Follow the documented
 to verify unknown awareness, limited services, trusted providers, blocked
 origins, and quarantined sensitive claims.
 
+## Milestone 11 Inspection
+
+See the [CLI inspection reference](docs/milestone-11-cli-inspection.md) for
+status, node, service, and trust listing commands.
+
 ## Development Notes
 
 StreetMesh v0.1 remains dependency-free. Cryptographic signatures, invite
 tokens, service invocation, and a full administration UI are not implemented
-in Milestone 10.
+in Milestone 11.
