@@ -48,6 +48,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="UDP port to bind and broadcast announcements on",
     )
     parser.add_argument(
+        "--service-announce-interval",
+        type=int,
+        default=None,
+        help="seconds between SERVICE announcements",
+    )
+    parser.add_argument(
+        "--services-file",
+        type=Path,
+        default=None,
+        help="path to JSON local service definitions",
+    )
+    parser.add_argument(
         "--check-config",
         action="store_true",
         help="load and validate configuration, then exit",
@@ -71,6 +83,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             data_dir=args.data_dir,
             node_name=args.node_name,
             announce_interval=args.announce_interval,
+            service_announce_interval=args.service_announce_interval,
+            services_file=args.services_file,
             udp_port=args.udp_port,
         )
     except ConfigError as exc:

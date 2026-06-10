@@ -7,7 +7,10 @@ import tempfile
 import unittest
 
 from streetmesh.directory import AwarenessStore, DuplicateCache
-from streetmesh.protocol import create_node_knowledge_object
+from streetmesh.protocol import (
+    create_node_knowledge_object,
+    create_service_knowledge_object,
+)
 
 
 class AwarenessStoreTests(unittest.TestCase):
@@ -185,6 +188,58 @@ class AwarenessStoreTests(unittest.TestCase):
         )
         self.assertIn("NODE_EXPIRED", logs.output[0])
 
+    def test_stores_refreshes_and_looks_up_services(self) -> None:
+        store = AwarenessStore(local_node_id="local-node-id")
+        store.update_from_knowledge_object(
+            _node_ko(
+                node_id="provider-id",
+                node_name="provider@local@mesh",
+                seq=1,
+                now=1_000,
+            ),
+            now=1_001,
+        )
+        first = _service_ko(seq=1, now=1_000)
+        second = _service_ko(seq=2, now=1_010, endpoint="/temperature/v2")
+
+        discovered = store.update_from_knowledge_object(first, now=1_001)
+        refreshed = store.update_from_knowledge_object(second, now=1_011)
+
+        entry = store.get_service("provider-id", "temperature")
+        self.assertEqual(discovered.status, "discovered")
+        self.assertEqual(refreshed.status, "refreshed")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.provider_name, "provider@local@mesh")
+        self.assertEqual(entry.endpoint, "/temperature/v2")
+        self.assertEqual(entry.seq, 2)
+        self.assertEqual(store.list_services(service_name="temperature"), [entry])
+
+    def test_persists_service_awareness(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "awareness.json"
+            store = AwarenessStore(path=path)
+            store.update_from_knowledge_object(_service_ko(seq=1, now=1_000), now=1_001)
+            store.save()
+
+            loaded = AwarenessStore.load(path)
+
+            entry = loaded.get_service("provider-id", "temperature")
+            self.assertIsNotNone(entry)
+            assert entry is not None
+            self.assertEqual(entry.capabilities, ["humidity"])
+
+    def test_expires_stale_remote_services(self) -> None:
+        store = AwarenessStore(local_node_id="local-node-id")
+        store.update_from_knowledge_object(_service_ko(seq=1, now=1_000), now=1_001)
+
+        with self.assertLogs("streetmesh.directory", level="INFO") as logs:
+            expired = store.expire_stale(now=1_301)
+
+        self.assertEqual(len(expired), 1)
+        self.assertIsNone(store.get_service("provider-id", "temperature"))
+        self.assertIn("SERVICE expired", logs.output[0])
+
 
 class DuplicateCacheTests(unittest.TestCase):
     def test_remembers_new_knowledge_object_ids(self) -> None:
@@ -231,6 +286,28 @@ def _node_ko(
             "node_id": node_id,
             "node_name": node_name,
             "fingerprint": "f" * 64,
+        },
+        seq=seq,
+        now=now,
+    )
+
+
+def _service_ko(
+    *,
+    seq: int,
+    now: int,
+    endpoint: str = "/temperature",
+) -> dict[str, object]:
+    return create_service_knowledge_object(
+        origin="provider-id",
+        service_name="temperature",
+        payload={
+            "service_name": "temperature",
+            "provider": "provider-id",
+            "capabilities": ["humidity"],
+            "endpoint": endpoint,
+            "protocol": "http",
+            "service_version": "0.1",
         },
         seq=seq,
         now=now,

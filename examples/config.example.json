@@ -3,6 +3,8 @@
     "node_name": "node01@local@mesh",
     "data_dir": "data",
     "announce_interval": 30,
+    "service_announce_interval": 60,
+    "services_file": "examples/services.example.json",
     "udp_port": 40404,
     "bind_host": "0.0.0.0",
     "broadcast_host": "255.255.255.255"

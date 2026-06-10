@@ -13,9 +13,11 @@ from streetmesh.gossip import GossipForwarder
 from streetmesh.identity import NodeIdentity
 from streetmesh.protocol import (
     create_node_knowledge_object,
+    create_service_knowledge_object,
     decode_knowledge_object,
     encode_knowledge_object,
 )
+from streetmesh.services import ServiceDefinition, ServiceRegistry
 from streetmesh.transport_udp import Datagram
 
 
@@ -41,6 +43,18 @@ class FakeTransport:
 class InterruptingTransport(FakeTransport):
     def receive(self, *, timeout: float | None = None) -> Datagram | None:
         raise KeyboardInterrupt
+
+
+class SecondReceiveInterruptTransport(FakeTransport):
+    def __init__(self) -> None:
+        super().__init__()
+        self.receive_count = 0
+
+    def receive(self, *, timeout: float | None = None) -> Datagram | None:
+        self.receive_count += 1
+        if self.receive_count == 2:
+            raise KeyboardInterrupt
+        return None
 
 
 class DaemonAnnouncementTests(unittest.TestCase):
@@ -85,6 +99,33 @@ class DaemonAnnouncementTests(unittest.TestCase):
 
         self.assertEqual(first["seq"], 1)
         self.assertEqual(second["seq"], 2)
+
+    def test_announce_services_broadcasts_registered_service(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        services = ServiceRegistry(
+            [
+                ServiceDefinition(
+                    service_name="temperature",
+                    capabilities=("humidity",),
+                    endpoint="/temperature",
+                )
+            ]
+        )
+
+        with self.assertLogs("streetmesh.daemon", level="INFO") as logs:
+            announcements = daemon.announce_services_once(
+                self._identity(),
+                services,
+                transport,
+            )
+
+        self.assertEqual(len(announcements), 1)
+        decoded = decode_knowledge_object(transport.broadcasts[0][0])
+        self.assertEqual(decoded["type"], "SERVICE")
+        self.assertEqual(decoded["subject"], "temperature")
+        self.assertEqual(decoded["payload"]["provider"], self._identity().node_id)
+        self.assertIn("SERVICE announced", logs.output[0])
 
     def test_receive_once_updates_awareness_store_for_node_ko(self) -> None:
         daemon = StreetMeshDaemon(self._config(Path("data")))
@@ -152,6 +193,45 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertEqual(len(transport.broadcasts), 1)
         forwarded = decode_knowledge_object(transport.broadcasts[0][0])
         self.assertEqual(forwarded["ko_id"], remote_ko["ko_id"])
+        self.assertEqual(forwarded["ttl"], 2)
+
+    def test_receive_once_stores_and_forwards_remote_service(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        remote_ko = create_service_knowledge_object(
+            origin="remote-node-id",
+            service_name="temperature",
+            payload={
+                "service_name": "temperature",
+                "provider": "remote-node-id",
+                "capabilities": ["humidity"],
+            },
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(remote_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        gossip = GossipForwarder(
+            local_node_id=awareness.local_node_id or "",
+            transport=transport,
+            port=40404,
+        )
+
+        daemon.receive_once(
+            awareness,
+            DuplicateCache(),
+            transport,
+            gossip=gossip,
+            timeout=0,
+        )
+
+        entry = awareness.get_service("remote-node-id", "temperature")
+        self.assertIsNotNone(entry)
+        self.assertEqual(len(transport.broadcasts), 1)
+        forwarded = decode_knowledge_object(transport.broadcasts[0][0])
         self.assertEqual(forwarded["ttl"], 2)
 
     def test_receive_once_does_not_forward_ignored_older_node_ko(self) -> None:
@@ -334,6 +414,43 @@ class DaemonAnnouncementTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(transport.closed)
             self.assertEqual(len(transport.broadcasts), 1)
+
+    def test_runtime_periodically_announces_services(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service_path = Path(temp_dir) / "services.json"
+            service_path.write_text(
+                '{"services":[{"service_name":"temperature"}]}',
+                encoding="utf-8",
+            )
+            transport = SecondReceiveInterruptTransport()
+            times = iter([0.0, 0.0, 0.0, 0.0, 61.0, 61.0])
+            base_config = self._config(Path(temp_dir))
+            config = StreetMeshConfig(
+                path=None,
+                node=NodeConfig(
+                    node_name=base_config.node.node_name,
+                    data_dir=base_config.node.data_dir,
+                    announce_interval=30,
+                    udp_port=base_config.node.udp_port,
+                    bind_host=base_config.node.bind_host,
+                    broadcast_host=base_config.node.broadcast_host,
+                    service_announce_interval=60,
+                    services_file=service_path,
+                ),
+            )
+
+            daemon = StreetMeshDaemon(
+                config,
+                transport_factory=lambda _config: transport,
+                clock=lambda: next(times),
+            )
+
+            self.assertEqual(daemon.run(), 0)
+            types = [
+                decode_knowledge_object(data)["type"]
+                for data, _port, _host in transport.broadcasts
+            ]
+            self.assertEqual(types.count("SERVICE"), 2)
 
     def _config(self, data_dir: Path) -> StreetMeshConfig:
         return StreetMeshConfig(

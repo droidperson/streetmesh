@@ -15,6 +15,7 @@ class ConfigError(ValueError):
 DEFAULT_DATA_DIR = Path("data")
 DEFAULT_NODE_NAME = "node01@local@mesh"
 DEFAULT_ANNOUNCE_INTERVAL = 30
+DEFAULT_SERVICE_ANNOUNCE_INTERVAL = 60
 DEFAULT_UDP_PORT = 40404
 DEFAULT_BIND_HOST = "0.0.0.0"
 DEFAULT_BROADCAST_HOST = "255.255.255.255"
@@ -28,6 +29,8 @@ class NodeConfig:
     udp_port: int
     bind_host: str
     broadcast_host: str
+    service_announce_interval: int = DEFAULT_SERVICE_ANNOUNCE_INTERVAL
+    services_file: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +45,8 @@ def load_config(
     data_dir: Path | None = None,
     node_name: str | None = None,
     announce_interval: int | None = None,
+    service_announce_interval: int | None = None,
+    services_file: Path | None = None,
     udp_port: int | None = None,
 ) -> StreetMeshConfig:
     """Load configuration from JSON and apply command-line overrides."""
@@ -60,6 +65,17 @@ def load_config(
         DEFAULT_ANNOUNCE_INTERVAL,
     )
     configured_udp_port = _get_udp_port(values, "udp_port", DEFAULT_UDP_PORT)
+    configured_service_announce_interval = _get_positive_int(
+        values,
+        "service_announce_interval",
+        DEFAULT_SERVICE_ANNOUNCE_INTERVAL,
+    )
+    raw_services_file = values.get("services_file")
+    configured_services_file = (
+        Path(str(raw_services_file)).expanduser()
+        if raw_services_file is not None
+        else None
+    )
     configured_bind_host = str(values.get("bind_host", DEFAULT_BIND_HOST)).strip()
     configured_broadcast_host = str(
         values.get("broadcast_host", DEFAULT_BROADCAST_HOST)
@@ -76,6 +92,13 @@ def load_config(
         )
     if udp_port is not None:
         configured_udp_port = _validate_udp_port("udp_port", udp_port)
+    if service_announce_interval is not None:
+        configured_service_announce_interval = _validate_positive_int(
+            "service_announce_interval",
+            service_announce_interval,
+        )
+    if services_file is not None:
+        configured_services_file = services_file.expanduser()
 
     if not configured_node_name:
         raise ConfigError("node_name must not be empty")
@@ -93,6 +116,8 @@ def load_config(
             udp_port=configured_udp_port,
             bind_host=configured_bind_host,
             broadcast_host=configured_broadcast_host,
+            service_announce_interval=configured_service_announce_interval,
+            services_file=configured_services_file,
         ),
     )
 
@@ -123,6 +148,8 @@ def _load_json_config(path: Path) -> dict[str, Any]:
         "udp_port",
         "bind_host",
         "broadcast_host",
+        "service_announce_interval",
+        "services_file",
     }
     unknown_keys = set(node_config) - allowed_keys
     if unknown_keys:

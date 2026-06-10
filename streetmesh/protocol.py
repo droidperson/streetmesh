@@ -9,7 +9,7 @@ from typing import Any
 
 PROTOCOL_NAME = "streetmesh"
 PROTOCOL_VERSION = 1
-SUPPORTED_TYPES = {"NODE"}
+SUPPORTED_TYPES = {"NODE", "SERVICE"}
 REQUIRED_FIELDS = (
     "v",
     "ko_id",
@@ -61,6 +61,42 @@ def create_node_knowledge_object(
         "subject": subject,
         "created": created,
         "expires": created + expiry_duration,
+        "seq": seq,
+        "ttl": ttl,
+        "payload": payload,
+        "signature": None,
+    }
+    validate_knowledge_object(knowledge_object, now=created)
+    return knowledge_object
+
+
+def create_service_knowledge_object(
+    *,
+    origin: str,
+    service_name: str,
+    payload: dict[str, Any],
+    seq: int = 1,
+    ttl: int = 3,
+    expires_in: int = 300,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """Create a SERVICE Knowledge Object with a 300-second default expiry."""
+
+    created = int(time.time() if now is None else now)
+    if (
+        not isinstance(expires_in, int)
+        or isinstance(expires_in, bool)
+        or expires_in <= 0
+    ):
+        raise KnowledgeObjectError("expires_in must be a positive integer")
+    knowledge_object = {
+        "v": PROTOCOL_VERSION,
+        "ko_id": str(uuid.uuid4()),
+        "type": "SERVICE",
+        "origin": origin,
+        "subject": service_name,
+        "created": created,
+        "expires": created + expires_in,
         "seq": seq,
         "ttl": ttl,
         "payload": payload,
@@ -159,6 +195,12 @@ def validate_knowledge_object(
 
     if knowledge_object["type"] == "NODE":
         _validate_node_payload(knowledge_object["payload"])
+    elif knowledge_object["type"] == "SERVICE":
+        _validate_service_payload(
+            knowledge_object["payload"],
+            origin=knowledge_object["origin"],
+            subject=knowledge_object["subject"],
+        )
 
 
 def _validate_uuid4(value: object) -> None:
@@ -222,3 +264,47 @@ def _validate_node_payload(payload: dict[str, Any]) -> None:
     node_name = payload.get("node_name")
     if node_name is not None and (not isinstance(node_name, str) or not node_name.strip()):
         raise KnowledgeObjectError("payload.node_name must be a non-empty string")
+
+
+def _validate_service_payload(
+    payload: dict[str, Any],
+    *,
+    origin: object,
+    subject: object,
+) -> None:
+    allowed = {
+        "service_name",
+        "provider",
+        "capabilities",
+        "endpoint",
+        "protocol",
+        "service_version",
+    }
+    unknown = set(payload) - allowed
+    if unknown:
+        raise KnowledgeObjectError(
+            f"unknown SERVICE payload field(s): {', '.join(sorted(unknown))}"
+        )
+
+    service_name = payload.get("service_name")
+    provider = payload.get("provider")
+    _validate_non_empty_string("payload.service_name", service_name)
+    _validate_non_empty_string("payload.provider", provider)
+    if service_name != subject:
+        raise KnowledgeObjectError("payload.service_name must match subject")
+    if provider != origin:
+        raise KnowledgeObjectError("payload.provider must match origin")
+
+    capabilities = payload.get("capabilities")
+    if capabilities is not None:
+        if not isinstance(capabilities, list) or any(
+            not isinstance(value, str) or not value.strip() for value in capabilities
+        ):
+            raise KnowledgeObjectError(
+                "payload.capabilities must be a list of non-empty strings"
+            )
+
+    for field in ("endpoint", "protocol", "service_version"):
+        value = payload.get(field)
+        if value is not None:
+            _validate_non_empty_string(f"payload.{field}", value)

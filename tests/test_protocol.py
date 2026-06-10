@@ -9,6 +9,7 @@ import uuid
 from streetmesh.protocol import (
     KnowledgeObjectError,
     create_node_knowledge_object,
+    create_service_knowledge_object,
     decode_knowledge_object,
     decode_message,
     encode_knowledge_object,
@@ -51,6 +52,48 @@ class KnowledgeObjectTests(unittest.TestCase):
 
         self.assertEqual(ko["ttl"], 3)
         self.assertEqual(ko["expires"], 1_700_000_120)
+
+    def test_creates_service_knowledge_object_with_defaults(self) -> None:
+        ko = create_service_knowledge_object(
+            origin="node-a",
+            service_name="temperature",
+            payload={
+                "service_name": "temperature",
+                "provider": "node-a",
+                "capabilities": ["current_temperature", "humidity"],
+                "endpoint": "/temperature",
+                "protocol": "http",
+                "service_version": "0.1",
+            },
+            now=1_700_000_000,
+        )
+
+        self.assertEqual(ko["type"], "SERVICE")
+        self.assertEqual(ko["subject"], "temperature")
+        self.assertEqual(ko["ttl"], 3)
+        self.assertEqual(ko["expires"], 1_700_000_300)
+
+    def test_rejects_service_without_required_provider(self) -> None:
+        with self.assertRaisesRegex(KnowledgeObjectError, "provider"):
+            create_service_knowledge_object(
+                origin="node-a",
+                service_name="temperature",
+                payload={"service_name": "temperature"},
+                now=1_700_000_000,
+            )
+
+    def test_rejects_service_with_invalid_capabilities(self) -> None:
+        with self.assertRaisesRegex(KnowledgeObjectError, "capabilities"):
+            create_service_knowledge_object(
+                origin="node-a",
+                service_name="temperature",
+                payload={
+                    "service_name": "temperature",
+                    "provider": "node-a",
+                    "capabilities": ["temperature", 1],
+                },
+                now=1_700_000_000,
+            )
 
     def test_ttl_and_expires_are_independent(self) -> None:
         ko = create_node_knowledge_object(

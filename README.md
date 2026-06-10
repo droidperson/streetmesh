@@ -4,10 +4,10 @@ A distributed awareness layer for autonomous edge systems.
 
 ## Status
 
-StreetMesh v0.1 has completed Milestone 8. Nodes broadcast NODE Knowledge
-Objects over UDP, maintain a persistent Awareness Store, suppress duplicate
-objects, refresh and expire known nodes, and gossip accepted remote objects
-with a decreasing hop TTL.
+StreetMesh v0.1 has completed Milestone 9. Nodes broadcast NODE and SERVICE
+Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
+duplicate objects, refresh and expire known nodes and services, and gossip
+accepted remote objects with a decreasing hop TTL.
 
 ## Requirements
 
@@ -36,10 +36,11 @@ python streetmeshd.py
 
 StreetMesh will create or load `data/identity.json`, broadcast NODE
 announcements over UDP, and continue announcing every 30 seconds until stopped
-with Ctrl+C. Received NODE announcements are tracked in the Awareness Store and
-persisted to `data/awareness.json`. Duplicate Knowledge Objects are suppressed
-for 300 seconds, and stale remote node awareness is expired when its announced
-expiry time passes.
+with Ctrl+C. When `services_file` is configured, local services are announced
+at `service_announce_interval`, which defaults to 60 seconds. Received NODE and
+SERVICE announcements are persisted to `data/awareness.json`. Duplicate
+Knowledge Objects are suppressed for 300 seconds, and stale remote awareness is
+expired when its announced expiry time passes.
 
 ## Repository Layout
 
@@ -48,18 +49,20 @@ streetmeshd.py                 Daemon entry point
 streetmesh/                    StreetMesh package
   cli.py                       Command-line interface
   config.py                    Configuration loading and validation
-  daemon.py                    Daemon lifecycle and NODE announcements
-  directory.py                 Awareness Store for known nodes
+  daemon.py                    Daemon lifecycle and announcements
+  directory.py                 Awareness Store for nodes and services
   gossip.py                    Gossip forwarding policy
   identity.py                  Node identity loading and creation
-  protocol.py                  Protocol constants placeholder
+  protocol.py                  Knowledge Object creation and validation
   routing.py                   Routing table placeholder
+  services.py                  Local service definitions and announcements
   storage.py                   Local state placeholder
   transport.py                 Null transport placeholder
   transport_udp.py             UDP byte transport
 examples/
   config.example.json          Example daemon configuration
   node.example.json            Example node metadata
+  services.example.json        Example local service definitions
 tests/                         unittest suite
 tools/
   two_node_discovery.py        Milestone 7 acceptance artifact verifier
@@ -68,6 +71,8 @@ docs/
                                Manual two-node acceptance procedure
   milestone-8-three-node-gossip.md
                                Manual three-node gossip procedure
+  milestone-9-service-advertisement.md
+                               Manual service advertisement procedure
 ```
 
 ## Milestone 7 Acceptance Test
@@ -89,7 +94,14 @@ Follow the documented
 [three-node gossip manual test](docs/milestone-8-three-node-gossip.md) to verify
 that an isolated Node C learns about Node A through Node B with TTL reduction.
 
+## Milestone 9 Acceptance Test
+
+Follow the documented
+[service advertisement manual test](docs/milestone-9-service-advertisement.md)
+to verify SERVICE announcement, discovery, refresh, persistence, gossip, and
+expiry.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Services, trust, and quarantine are
-not implemented in Milestone 8.
+StreetMesh v0.1 remains dependency-free. Service invocation, trust, and
+quarantine are not implemented in Milestone 9.

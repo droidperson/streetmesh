@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "service_name": "temperature",
+      "capabilities": [
+        "current_temperature",
+        "humidity"
+      ],
+      "endpoint": "/temperature",
+      "protocol": "http",
+      "service_version": "0.1"
+    }
+  ]
+}

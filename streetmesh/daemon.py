@@ -16,6 +16,7 @@ from .protocol import (
     decode_knowledge_object,
     encode_knowledge_object,
 )
+from .services import ServiceConfigError, ServiceRegistry
 from .transport_udp import Datagram, UDPTransport, UDPTransportError
 
 
@@ -59,6 +60,12 @@ class StreetMeshDaemon:
             return 1
 
         try:
+            services = ServiceRegistry.load(self.config.node.services_file)
+        except ServiceConfigError as exc:
+            print(f"Service configuration error: {exc}")
+            return 1
+
+        try:
             transport = self._transport_factory(self.config)
         except UDPTransportError as exc:
             print(f"UDP transport error: {exc}")
@@ -91,16 +98,14 @@ class StreetMeshDaemon:
         LOGGER.info("Press Ctrl+C to stop StreetMesh.")
 
         try:
-            while True:
-                announcement = self.announce_once(identity, transport)
-                awareness.update_from_knowledge_object(announcement)
-                awareness.save()
-                self._receive_until_next_announcement(
-                    awareness,
-                    duplicate_cache,
-                    transport,
-                    gossip,
-                )
+            self._run_runtime(
+                identity,
+                services,
+                awareness,
+                duplicate_cache,
+                transport,
+                gossip,
+            )
         except KeyboardInterrupt:
             LOGGER.info("StreetMesh shutdown requested; stopping cleanly.")
             return 0
@@ -141,6 +146,32 @@ class StreetMeshDaemon:
             knowledge_object["expires"],
         )
         return knowledge_object
+
+    def announce_services_once(
+        self,
+        identity: NodeIdentity,
+        services: ServiceRegistry,
+        transport: AnnouncementTransport,
+    ) -> list[dict[str, object]]:
+        """Create and broadcast one claim for each registered local service."""
+
+        announcements = services.create_announcements(provider=identity.node_id)
+        for knowledge_object in announcements:
+            transport.send_broadcast(
+                encode_knowledge_object(knowledge_object),
+                port=self.config.node.udp_port,
+                host=self.config.node.broadcast_host,
+            )
+            LOGGER.info(
+                "SERVICE announced: service_name=%s provider=%s ko_id=%s seq=%s ttl=%s expires=%s",
+                knowledge_object["subject"],
+                identity.node_id,
+                knowledge_object["ko_id"],
+                knowledge_object["seq"],
+                knowledge_object["ttl"],
+                knowledge_object["expires"],
+            )
+        return announcements
 
     def receive_once(
         self,
@@ -203,6 +234,50 @@ class StreetMeshDaemon:
                 transport,
                 gossip=gossip,
                 timeout=min(1.0, remaining),
+            )
+
+    def _run_runtime(
+        self,
+        identity: NodeIdentity,
+        services: ServiceRegistry,
+        awareness: AwarenessStore,
+        duplicate_cache: DuplicateCache,
+        transport: AnnouncementTransport,
+        gossip: GossipForwarder,
+    ) -> None:
+        next_node_announcement = self._clock()
+        next_service_announcement = self._clock()
+        has_services = bool(services.list_local_services())
+
+        while True:
+            current_time = self._clock()
+            if current_time >= next_node_announcement:
+                announcement = self.announce_once(identity, transport)
+                awareness.update_from_knowledge_object(announcement)
+                awareness.save()
+                next_node_announcement = (
+                    current_time + self.config.node.announce_interval
+                )
+
+            if has_services and current_time >= next_service_announcement:
+                self.announce_services_once(identity, services, transport)
+                next_service_announcement = (
+                    current_time + self.config.node.service_announce_interval
+                )
+
+            if awareness.expire_stale():
+                awareness.save()
+
+            next_deadline = next_node_announcement
+            if has_services:
+                next_deadline = min(next_deadline, next_service_announcement)
+            timeout = min(1.0, max(0.0, next_deadline - self._clock()))
+            self.receive_once(
+                awareness,
+                duplicate_cache,
+                transport,
+                gossip=gossip,
+                timeout=timeout,
             )
 
     @staticmethod
