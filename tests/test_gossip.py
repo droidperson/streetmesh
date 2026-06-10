@@ -8,6 +8,8 @@ import unittest
 
 from streetmesh.gossip import GossipForwarder
 from streetmesh.protocol import create_node_knowledge_object
+from streetmesh.policy import ReviewPolicy
+from streetmesh.trust import TrustStore
 
 
 class FakeTransport:
@@ -111,6 +113,25 @@ class GossipForwarderTests(unittest.TestCase):
 
         self.assertIsNone(forwarded)
         self.assertEqual(transport.broadcasts, [])
+
+    def test_blocked_object_is_not_forwarded_by_gossip_policy(self) -> None:
+        transport = FakeTransport()
+        trust_store = TrustStore()
+        trust_store.add_blocked("remote-node-id")
+        forwarder = GossipForwarder(
+            local_node_id="local-node-id",
+            transport=transport,
+            port=40404,
+            trust_store=trust_store,
+            policy=ReviewPolicy(),
+        )
+
+        with self.assertLogs("streetmesh.gossip", level="INFO") as logs:
+            forwarded = forwarder.forward(self._ko(), now=1_000)
+
+        self.assertIsNone(forwarded)
+        self.assertEqual(transport.broadcasts, [])
+        self.assertIn("reason=policy-rejected", logs.output[0])
 
     def _forwarder(self, transport: FakeTransport) -> GossipForwarder:
         return GossipForwarder(

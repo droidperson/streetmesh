@@ -10,6 +10,7 @@ from .config import StreetMeshConfig
 from .directory import AwarenessStore, DuplicateCache
 from .gossip import GossipForwarder
 from .identity import IdentityError, NodeIdentity, load_or_create_identity
+from .policy import ReviewPolicy
 from .protocol import (
     KnowledgeObjectError,
     create_node_knowledge_object,
@@ -17,7 +18,9 @@ from .protocol import (
     encode_knowledge_object,
 )
 from .services import ServiceConfigError, ServiceRegistry
+from .quarantine import QuarantineStore
 from .transport_udp import Datagram, UDPTransport, UDPTransportError
+from .trust import TrustStore, TrustStoreError
 
 
 LOGGER = logging.getLogger(__name__)
@@ -66,6 +69,18 @@ class StreetMeshDaemon:
             return 1
 
         try:
+            trust_store = TrustStore.load(
+                self.config.node.data_dir / "trust.json"
+            )
+        except TrustStoreError as exc:
+            print(f"Trust store error: {exc}")
+            return 1
+        policy = ReviewPolicy()
+        quarantine = QuarantineStore.load(
+            self.config.node.data_dir / "quarantine.json"
+        )
+
+        try:
             transport = self._transport_factory(self.config)
         except UDPTransportError as exc:
             print(f"UDP transport error: {exc}")
@@ -81,6 +96,8 @@ class StreetMeshDaemon:
             transport=transport,
             port=self.config.node.udp_port,
             host=self.config.node.broadcast_host,
+            trust_store=trust_store,
+            policy=policy,
         )
         awareness.add_local_node(
             node_id=identity.node_id,
@@ -105,6 +122,9 @@ class StreetMeshDaemon:
                 duplicate_cache,
                 transport,
                 gossip,
+                trust_store,
+                policy,
+                quarantine,
             )
         except KeyboardInterrupt:
             LOGGER.info("StreetMesh shutdown requested; stopping cleanly.")
@@ -180,6 +200,9 @@ class StreetMeshDaemon:
         transport: AnnouncementTransport,
         *,
         gossip: GossipForwarder | None = None,
+        trust_store: TrustStore | None = None,
+        policy: ReviewPolicy | None = None,
+        quarantine: QuarantineStore | None = None,
         timeout: float | None = None,
     ) -> None:
         datagram = transport.receive(timeout=timeout)
@@ -197,6 +220,9 @@ class StreetMeshDaemon:
             )
             return
 
+        if not duplicate_cache.remember(knowledge_object.get("ko_id")):
+            return
+
         if knowledge_object.get("origin") == awareness.local_node_id:
             LOGGER.info(
                 "Suppressed received self-announcement: node_id=%s ko_id=%s",
@@ -205,13 +231,39 @@ class StreetMeshDaemon:
             )
             return
 
-        if not duplicate_cache.remember(knowledge_object.get("ko_id")):
+        active_trust_store = trust_store or TrustStore()
+        active_policy = policy or ReviewPolicy()
+        trust_state = active_trust_store.get_state(knowledge_object.get("origin"))
+        decision = active_policy.decide(knowledge_object, trust_state)
+        LOGGER.info(
+            "Policy %s: type=%s origin=%s trust_state=%s reason=%s ko_id=%s",
+            decision.action,
+            knowledge_object.get("type"),
+            knowledge_object.get("origin"),
+            trust_state,
+            decision.reason,
+            knowledge_object.get("ko_id"),
+        )
+
+        if decision.action == "rejected":
+            return
+        if decision.action == "quarantined":
+            if quarantine is not None:
+                quarantine.add(
+                    knowledge_object,
+                    trust_state=trust_state,
+                    reason=decision.reason,
+                )
             return
 
-        update = awareness.update_from_knowledge_object(knowledge_object)
+        update = awareness.update_from_knowledge_object(
+            knowledge_object,
+            trust_state=trust_state,
+            accepted_limited=decision.action == "accepted-limited",
+        )
         if update.status != "ignored":
             awareness.save()
-            if gossip is not None:
+            if gossip is not None and decision.forward:
                 gossip.forward(knowledge_object)
 
     def _receive_until_next_announcement(
@@ -244,6 +296,9 @@ class StreetMeshDaemon:
         duplicate_cache: DuplicateCache,
         transport: AnnouncementTransport,
         gossip: GossipForwarder,
+        trust_store: TrustStore,
+        policy: ReviewPolicy,
+        quarantine: QuarantineStore,
     ) -> None:
         next_node_announcement = self._clock()
         next_service_announcement = self._clock()
@@ -277,6 +332,9 @@ class StreetMeshDaemon:
                 duplicate_cache,
                 transport,
                 gossip=gossip,
+                trust_store=trust_store,
+                policy=policy,
+                quarantine=quarantine,
                 timeout=timeout,
             )
 

@@ -37,6 +37,7 @@ class AwarenessStoreTests(unittest.TestCase):
         self.assertEqual(by_id.last_seen, 1_001)
         self.assertEqual(by_id.expires, ko["expires"])
         self.assertFalse(by_id.is_local)
+        self.assertEqual(by_id.trust_state, "unknown")
         self.assertEqual(store.list_nodes(), [by_id])
 
     def test_distinguishes_local_node(self) -> None:
@@ -214,6 +215,37 @@ class AwarenessStoreTests(unittest.TestCase):
         self.assertEqual(entry.endpoint, "/temperature/v2")
         self.assertEqual(entry.seq, 2)
         self.assertEqual(store.list_services(service_name="temperature"), [entry])
+
+    def test_marks_unknown_service_as_accepted_limited(self) -> None:
+        store = AwarenessStore()
+
+        store.update_from_knowledge_object(
+            _service_ko(seq=1, now=1_000),
+            now=1_001,
+            trust_state="unknown",
+            accepted_limited=True,
+        )
+
+        entry = store.get_service("provider-id", "temperature")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.trust_state, "unknown")
+        self.assertTrue(entry.accepted_limited)
+
+    def test_marks_trusted_service_as_normal(self) -> None:
+        store = AwarenessStore()
+
+        store.update_from_knowledge_object(
+            _service_ko(seq=1, now=1_000),
+            now=1_001,
+            trust_state="trusted",
+        )
+
+        entry = store.get_service("provider-id", "temperature")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.trust_state, "trusted")
+        self.assertFalse(entry.accepted_limited)
 
     def test_persists_service_awareness(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -9,7 +9,13 @@ from typing import Any
 
 PROTOCOL_NAME = "streetmesh"
 PROTOCOL_VERSION = 1
-SUPPORTED_TYPES = {"NODE", "SERVICE"}
+SUPPORTED_TYPES = {
+    "NODE",
+    "SERVICE",
+    "GATEWAY",
+    "FEDERATION",
+    "INTRODUCTION",
+}
 REQUIRED_FIELDS = (
     "v",
     "ko_id",

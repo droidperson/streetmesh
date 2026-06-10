@@ -1,31 +1,24 @@
 {
   "nodes": [
     {
-      "expires": 1781081823,
-      "first_seen": 1781081693,
+      "expires": 1781082862,
+      "first_seen": 1781082717,
       "is_local": true,
-      "last_seen": 1781081703,
+      "last_seen": 1781082742,
       "node_id": "8c024cfe-9b9b-47b0-a152-9d7b3a59f10e",
       "node_name": "nodeA@local@mesh",
-      "seq": 3
+      "seq": 6,
+      "trust_state": "unknown"
     },
     {
-      "expires": 1781081825,
-      "first_seen": 1781081695,
+      "expires": 1781082860,
+      "first_seen": 1781082720,
       "is_local": false,
-      "last_seen": 1781081705,
+      "last_seen": 1781082740,
       "node_id": "770de7e8-f5e3-424f-b7a1-f40176db61c0",
       "node_name": "nodeB@local@mesh",
-      "seq": 4
-    },
-    {
-      "expires": 1781081822,
-      "first_seen": 1781081697,
-      "is_local": false,
-      "last_seen": 1781081702,
-      "node_id": "8effa244-1925-4878-a0d4-3c399cd60f2a",
-      "node_name": "nodeC@local@mesh",
-      "seq": 4
+      "seq": 5,
+      "trust_state": "unknown"
     }
   ],
   "services": []

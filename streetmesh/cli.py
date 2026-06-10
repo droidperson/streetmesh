@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from pathlib import Path
 from typing import Sequence
@@ -10,6 +11,7 @@ from typing import Sequence
 from . import __version__
 from .config import ConfigError, load_config
 from .daemon import StreetMeshDaemon
+from .trust import TrustStore, TrustStoreError
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,6 +66,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="load and validate configuration, then exit",
     )
+    trust_actions = parser.add_mutually_exclusive_group()
+    trust_actions.add_argument(
+        "--list-trust",
+        action="store_true",
+        help="list local trust entries and exit",
+    )
+    trust_actions.add_argument(
+        "--trust-node",
+        metavar="NODE_ID",
+        help="mark a node ID trusted and exit",
+    )
+    trust_actions.add_argument(
+        "--block-node",
+        metavar="NODE_ID",
+        help="mark a node ID blocked and exit",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -93,6 +111,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.check_config:
         source = config.path if config.path is not None else "defaults"
         print(f"Configuration OK: {source}")
+        return 0
+
+    if args.list_trust or args.trust_node or args.block_node:
+        try:
+            trust_store = TrustStore.load(config.node.data_dir / "trust.json")
+            if args.trust_node:
+                trust_store.add_trusted(args.trust_node)
+                print(f"Trusted node: {args.trust_node}")
+            elif args.block_node:
+                trust_store.add_blocked(args.block_node)
+                print(f"Blocked node: {args.block_node}")
+            else:
+                print(
+                    json.dumps(
+                        {
+                            "nodes": [
+                                {
+                                    "node_id": entry.node_id,
+                                    "state": entry.state,
+                                }
+                                for entry in trust_store.list_entries()
+                            ]
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
+                )
+        except TrustStoreError as exc:
+            parser.error(str(exc))
         return 0
 
     daemon = StreetMeshDaemon(config=config)

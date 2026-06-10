@@ -17,7 +17,10 @@ from streetmesh.protocol import (
     decode_knowledge_object,
     encode_knowledge_object,
 )
+from streetmesh.policy import ReviewPolicy
+from streetmesh.quarantine import QuarantineStore
 from streetmesh.services import ServiceDefinition, ServiceRegistry
+from streetmesh.trust import TrustStore
 from streetmesh.transport_udp import Datagram
 
 
@@ -154,6 +157,7 @@ class DaemonAnnouncementTests(unittest.TestCase):
         assert entry is not None
         self.assertEqual(entry.node_name, "remote@local@mesh")
         self.assertFalse(entry.is_local)
+        self.assertEqual(entry.trust_state, "unknown")
 
     def test_receive_once_forwards_accepted_remote_node_ko(self) -> None:
         daemon = StreetMeshDaemon(self._config(Path("data")))
@@ -230,9 +234,121 @@ class DaemonAnnouncementTests(unittest.TestCase):
 
         entry = awareness.get_service("remote-node-id", "temperature")
         self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.trust_state, "unknown")
+        self.assertTrue(entry.accepted_limited)
         self.assertEqual(len(transport.broadcasts), 1)
         forwarded = decode_knowledge_object(transport.broadcasts[0][0])
         self.assertEqual(forwarded["ttl"], 2)
+
+    def test_blocked_claim_is_rejected_and_not_forwarded(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        blocked_ko = create_node_knowledge_object(
+            origin="blocked-node-id",
+            subject="blocked@local@mesh",
+            payload={
+                "node_id": "blocked-node-id",
+                "node_name": "blocked@local@mesh",
+                "fingerprint": "b" * 64,
+            },
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(blocked_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        trust_store = TrustStore()
+        trust_store.add_blocked("blocked-node-id")
+        gossip = GossipForwarder(
+            local_node_id=awareness.local_node_id or "",
+            transport=transport,
+            port=40404,
+        )
+
+        with self.assertLogs("streetmesh.daemon", level="INFO") as logs:
+            daemon.receive_once(
+                awareness,
+                DuplicateCache(),
+                transport,
+                gossip=gossip,
+                trust_store=trust_store,
+                policy=ReviewPolicy(),
+                timeout=0,
+            )
+
+        self.assertIsNone(awareness.get_by_node_id("blocked-node-id"))
+        self.assertEqual(transport.broadcasts, [])
+        self.assertTrue(any("Policy rejected" in line for line in logs.output))
+
+    def test_unknown_gateway_is_quarantined(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        gateway_ko = create_node_knowledge_object(
+            origin="gateway-node-id",
+            subject="gateway@local@mesh",
+            payload={},
+        )
+        gateway_ko["type"] = "GATEWAY"
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(gateway_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        quarantine = QuarantineStore()
+
+        daemon.receive_once(
+            awareness,
+            DuplicateCache(),
+            transport,
+            trust_store=TrustStore(),
+            policy=ReviewPolicy(),
+            quarantine=quarantine,
+            timeout=0,
+        )
+
+        self.assertEqual(len(quarantine.list_claims()), 1)
+        self.assertEqual(quarantine.list_claims()[0]["type"], "GATEWAY")
+
+    def test_trusted_service_is_accepted_normally(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        awareness = AwarenessStore(local_node_id=self._identity().node_id)
+        remote_ko = create_service_knowledge_object(
+            origin="trusted-node-id",
+            service_name="temperature",
+            payload={
+                "service_name": "temperature",
+                "provider": "trusted-node-id",
+            },
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(remote_ko),
+                address=("127.0.0.1", 40404),
+            )
+        )
+        trust_store = TrustStore()
+        trust_store.add_trusted("trusted-node-id")
+
+        daemon.receive_once(
+            awareness,
+            DuplicateCache(),
+            transport,
+            trust_store=trust_store,
+            policy=ReviewPolicy(),
+            timeout=0,
+        )
+
+        entry = awareness.get_service("trusted-node-id", "temperature")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertEqual(entry.trust_state, "trusted")
+        self.assertFalse(entry.accepted_limited)
 
     def test_receive_once_does_not_forward_ignored_older_node_ko(self) -> None:
         daemon = StreetMeshDaemon(self._config(Path("data")))
@@ -359,7 +475,7 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertTrue(entry.is_local)
         self.assertEqual(entry.seq, 0)
         self.assertEqual(entry.last_seen, 100)
-        self.assertEqual(len(duplicate_cache), 0)
+        self.assertEqual(len(duplicate_cache), 1)
         self.assertIn("Suppressed received self-announcement", logs.output[0])
 
     def test_receive_loop_expires_stale_awareness(self) -> None:

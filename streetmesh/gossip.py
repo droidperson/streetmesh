@@ -13,6 +13,8 @@ from .protocol import (
     encode_knowledge_object,
     validate_knowledge_object,
 )
+from .policy import ReviewPolicy
+from .trust import TrustStore
 
 
 LOGGER = logging.getLogger(__name__)
@@ -34,6 +36,8 @@ class GossipForwarder:
         port: int,
         host: str | None = None,
         duplicate_cache: DuplicateCache | None = None,
+        trust_store: TrustStore | None = None,
+        policy: ReviewPolicy | None = None,
     ) -> None:
         self.local_node_id = local_node_id
         self.transport = transport
@@ -42,6 +46,8 @@ class GossipForwarder:
         self.duplicate_cache = (
             duplicate_cache if duplicate_cache is not None else DuplicateCache()
         )
+        self.trust_store = trust_store
+        self.policy = policy
 
     def forward(
         self,
@@ -67,6 +73,18 @@ class GossipForwarder:
         if knowledge_object.get("origin") == self.local_node_id:
             LOGGER.info("Gossip not forwarded: ko_id=%s reason=self-originated", ko_id)
             return None
+
+        if self.trust_store is not None and self.policy is not None:
+            trust_state = self.trust_store.get_state(knowledge_object.get("origin"))
+            decision = self.policy.decide(knowledge_object, trust_state)
+            if not decision.forward:
+                LOGGER.info(
+                    "Gossip not forwarded: ko_id=%s reason=policy-%s trust_state=%s",
+                    ko_id,
+                    decision.action,
+                    trust_state,
+                )
+                return None
 
         ttl = knowledge_object["ttl"]
         assert isinstance(ttl, int)

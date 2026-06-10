@@ -9,6 +9,8 @@ from pathlib import Path
 import time
 from typing import Any, Literal
 
+from .trust import TRUST_STATES, TrustState
+
 
 LOGGER = logging.getLogger(__name__)
 UpdateStatus = Literal["discovered", "refreshed", "ignored"]
@@ -30,6 +32,7 @@ class NodeEntry:
     expires: int
     is_local: bool
     seq: int
+    trust_state: TrustState = "unknown"
 
     @classmethod
     def from_json(cls, value: object) -> "NodeEntry | None":
@@ -44,6 +47,7 @@ class NodeEntry:
             expires = value["expires"]
             is_local = value["is_local"]
             seq = value["seq"]
+            trust_state = value.get("trust_state", "unknown")
         except KeyError:
             return None
 
@@ -61,6 +65,8 @@ class NodeEntry:
             return None
         if not isinstance(seq, int) or isinstance(seq, bool):
             return None
+        if not isinstance(trust_state, str) or trust_state not in TRUST_STATES:
+            return None
 
         return cls(
             node_id=node_id,
@@ -70,6 +76,7 @@ class NodeEntry:
             expires=expires,
             is_local=is_local,
             seq=seq,
+            trust_state=trust_state,
         )
 
 
@@ -87,6 +94,8 @@ class ServiceEntry:
     expires: int
     is_local: bool
     seq: int
+    trust_state: TrustState = "unknown"
+    accepted_limited: bool = False
 
     @classmethod
     def from_json(cls, value: object) -> "ServiceEntry | None":
@@ -105,6 +114,8 @@ class ServiceEntry:
             expires = value["expires"]
             is_local = value["is_local"]
             seq = value["seq"]
+            trust_state = value.get("trust_state", "unknown")
+            accepted_limited = value.get("accepted_limited", False)
         except KeyError:
             return None
 
@@ -130,6 +141,12 @@ class ServiceEntry:
             return None
         if not isinstance(is_local, bool):
             return None
+        if (
+            not isinstance(trust_state, str)
+            or trust_state not in TRUST_STATES
+            or not isinstance(accepted_limited, bool)
+        ):
+            return None
         return cls(
             service_name=service_name,
             provider=provider,
@@ -143,6 +160,8 @@ class ServiceEntry:
             expires=expires,
             is_local=is_local,
             seq=seq,
+            trust_state=trust_state,
+            accepted_limited=accepted_limited,
         )
 
 
@@ -178,6 +197,7 @@ class AwarenessStore:
             expires=expires,
             is_local=True,
             seq=0,
+            trust_state="privileged",
         )
         self._store_entry(entry)
         return entry
@@ -187,9 +207,16 @@ class AwarenessStore:
         knowledge_object: dict[str, Any],
         *,
         now: int | None = None,
+        trust_state: TrustState = "unknown",
+        accepted_limited: bool = False,
     ) -> AwarenessUpdate:
         if knowledge_object.get("type") == "SERVICE":
-            return self._update_service(knowledge_object, now=now)
+            return self._update_service(
+                knowledge_object,
+                now=now,
+                trust_state=trust_state,
+                accepted_limited=accepted_limited,
+            )
 
         node_data = _node_data_from_knowledge_object(knowledge_object)
         if node_data is None:
@@ -213,6 +240,7 @@ class AwarenessStore:
             existing.expires = expires
             existing.is_local = is_local
             existing.seq = seq
+            existing.trust_state = trust_state
             if old_name != node_name:
                 self._node_names.pop(old_name, None)
             self._node_names[node_name] = node_id
@@ -234,6 +262,7 @@ class AwarenessStore:
             expires=expires,
             is_local=is_local,
             seq=seq,
+            trust_state=trust_state,
         )
         self._store_entry(entry)
         LOGGER.info(
@@ -394,6 +423,8 @@ class AwarenessStore:
         knowledge_object: dict[str, Any],
         *,
         now: int | None = None,
+        trust_state: TrustState = "unknown",
+        accepted_limited: bool = False,
     ) -> AwarenessUpdate:
         service_data = _service_data_from_knowledge_object(knowledge_object)
         if service_data is None:
@@ -421,6 +452,8 @@ class AwarenessStore:
             existing.expires = expires
             existing.is_local = provider == self.local_node_id
             existing.seq = seq
+            existing.trust_state = trust_state
+            existing.accepted_limited = accepted_limited
             LOGGER.info(
                 "SERVICE refreshed: service_name=%s provider=%s seq=%s expires=%s",
                 service_name,
@@ -443,6 +476,8 @@ class AwarenessStore:
             expires=expires,
             is_local=provider == self.local_node_id,
             seq=seq,
+            trust_state=trust_state,
+            accepted_limited=accepted_limited,
         )
         self._services[key] = entry
         LOGGER.info(
