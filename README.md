@@ -4,7 +4,7 @@ A distributed awareness layer for autonomous edge systems.
 
 ## Status
 
-StreetMesh v0.1 has completed Milestone 11. Nodes broadcast NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 12. Nodes broadcast NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -92,6 +92,8 @@ docs/
                                Manual trust and quarantine procedure
   milestone-11-cli-inspection.md
                                CLI inspection reference
+  milestone-12-raspberry-pi-deployment.md
+                               Raspberry Pi OS deployment guide
 ```
 
 ## Milestone 7 Acceptance Test
@@ -132,8 +134,14 @@ origins, and quarantined sensitive claims.
 See the [CLI inspection reference](docs/milestone-11-cli-inspection.md) for
 status, node, service, and trust listing commands.
 
+## Milestone 12 Raspberry Pi Deployment
+
+See the [Raspberry Pi deployment guide](docs/milestone-12-raspberry-pi-deployment.md)
+for Raspberry Pi OS setup, three-node LAN testing, inspection commands,
+systemd configuration, and network troubleshooting.
+
 ## Development Notes
 
 StreetMesh v0.1 remains dependency-free. Cryptographic signatures, invite
 tokens, service invocation, and a full administration UI are not implemented
-in Milestone 11.
+in Milestone 12.
