@@ -1,0 +1,25 @@
+{
+  "nodes": [
+    {
+      "expires": 1781086925,
+      "first_seen": 1781086695,
+      "is_local": true,
+      "last_seen": 1781086805,
+      "node_id": "40727171-e703-4595-997c-efcbec5f9e0c",
+      "node_name": "laptop@local@mesh",
+      "seq": 23,
+      "trust_state": "unknown"
+    },
+    {
+      "expires": 1781086925,
+      "first_seen": 1781086698,
+      "is_local": false,
+      "last_seen": 1781086803,
+      "node_id": "8b250572-67ff-4dbc-98e7-a6c48cc92369",
+      "node_name": "pi01@local@mesh",
+      "seq": 26,
+      "trust_state": "unknown"
+    }
+  ],
+  "services": []
+}
