@@ -1,8 +1,57 @@
 # StreetMesh
 
-A distributed awareness layer for autonomous edge systems.
+Distributed awareness mesh for autonomous edge systems.
 
-## Status
+StreetMesh is a mycelial-inspired distributed awareness network that enables autonomous edge nodes to discover each other, exchange knowledge, advertise services, and establish trust without central coordination.
+
+## Current Status
+
+**Version:** v0.1.0
+
+### Implemented Features
+
+* Node identity management
+* Knowledge Object protocol
+* UDP node discovery
+* Awareness directory
+* Gossip propagation
+* Service advertisement
+* Trust and quarantine framework
+* Command-line inspection tools
+* Raspberry Pi deployment support
+
+### Validated Platforms
+
+* Windows 11
+* Raspberry Pi OS
+
+### Validation Completed
+
+* Cross-platform node discovery
+* Node expiry and re-discovery
+* Gossip forwarding
+* Service propagation
+* Trust management
+* Persistent identities
+
+## Vision
+
+StreetMesh aims to provide distributed awareness for autonomous edge systems operating in dynamic, unreliable, and infrastructure-constrained environments.
+
+Examples include:
+
+* Raspberry Pi clusters
+* Mobile devices
+* Vehicles
+* Motorcycles
+* Drones
+* Sensors
+* Edge computing platforms
+
+StreetMesh is inspired by biological mycelial networks, where awareness propagates organically through a mesh of interconnected nodes.
+
+
+
 
 StreetMesh v0.1 has completed Milestone 12. Nodes broadcast NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
