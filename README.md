@@ -4,11 +4,9 @@ A distributed awareness layer for autonomous edge systems.
 
 ## Status
 
-StreetMesh v0.1 is in Milestone 1. This repository currently contains the
-project skeleton, JSON configuration loading, persistent local identity, example
-configuration files, and a standard-library-only command-line entry point.
-
-Networking is not implemented yet.
+StreetMesh v0.1 has completed Milestone 7. Nodes broadcast NODE Knowledge
+Objects over UDP, maintain a persistent Awareness Store, suppress duplicate
+objects, refresh known nodes, and expire stale remote nodes.
 
 ## Requirements
 
@@ -61,9 +59,27 @@ examples/
   config.example.json          Example daemon configuration
   node.example.json            Example node metadata
 tests/                         unittest suite
+tools/
+  two_node_discovery.py        Milestone 7 acceptance artifact verifier
+docs/
+  milestone-7-two-node-discovery.md
+                               Manual two-node acceptance procedure
 ```
+
+## Milestone 7 Acceptance Test
+
+Follow the documented
+[two-node discovery manual test](docs/milestone-7-two-node-discovery.md), then
+verify its saved logs and state with the standard-library helper:
+
+```sh
+python tools/two_node_discovery.py
+```
+
+The live network steps remain manual because UDP broadcast behavior depends on
+the host network and firewall. The helper's artifact checks are unit tested.
 
 ## Development Notes
 
-Keep Milestone 1 dependency-free. Use only the Python standard library until a
-later milestone explicitly introduces external dependencies.
+StreetMesh v0.1 remains dependency-free. Gossip, services, trust, and
+quarantine are not implemented in Milestone 7.
