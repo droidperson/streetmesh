@@ -1,35 +1,25 @@
 {
   "nodes": [
     {
-      "expires": 1781172026,
+      "expires": 1781172116,
       "first_seen": 1781171096,
       "is_local": true,
-      "last_seen": 1781171906,
+      "last_seen": 1781171996,
       "node_id": "a36310d9-b774-4e5f-9c3f-b6c85b02a2a8",
       "node_name": "laptop@local@mesh",
-      "seq": 28,
+      "seq": 31,
+      "trust_state": "unknown"
+    },
+    {
+      "expires": 1781172112,
+      "first_seen": 1781171959,
+      "is_local": false,
+      "last_seen": 1781171989,
+      "node_id": "e7731edb-9eab-442e-b934-e4cebedde11a",
+      "node_name": "pi01@local@mesh",
+      "seq": 2,
       "trust_state": "unknown"
     }
   ],
-  "services": [
-    {
-      "accepted_limited": true,
-      "capabilities": [
-        "current_temperature",
-        "humidity"
-      ],
-      "endpoint": "/temperature",
-      "expires": 1781171979,
-      "first_seen": 1781171136,
-      "is_local": false,
-      "last_seen": 1781171676,
-      "protocol": "http",
-      "provider": "e7731edb-9eab-442e-b934-e4cebedde11a",
-      "provider_name": "pi01@local@mesh",
-      "seq": 11,
-      "service_name": "temperature",
-      "service_version": "0.1",
-      "trust_state": "unknown"
-    }
-  ]
+  "services": []
 }
