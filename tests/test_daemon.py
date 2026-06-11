@@ -10,7 +10,7 @@ from streetmesh.config import NodeConfig, StreetMeshConfig
 from streetmesh.directory import AwarenessStore, DuplicateCache
 from streetmesh.daemon import StreetMeshDaemon
 from streetmesh.gossip import GossipForwarder
-from streetmesh.identity import NodeIdentity
+from streetmesh.identity import NodeIdentity, load_identity
 from streetmesh.protocol import (
     create_node_knowledge_object,
     create_service_knowledge_object,
@@ -478,6 +478,49 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertEqual(len(duplicate_cache), 1)
         self.assertIn("Suppressed received self-announcement", logs.output[0])
 
+    def test_receive_once_suppresses_received_self_service_announcement(self) -> None:
+        daemon = StreetMeshDaemon(self._config(Path("data")))
+        transport = FakeTransport()
+        identity = self._identity()
+        awareness = AwarenessStore(local_node_id=identity.node_id)
+        duplicate_cache = DuplicateCache()
+        announcement = create_service_knowledge_object(
+            origin=identity.node_id,
+            service_name="temperature",
+            payload={
+                "service_name": "temperature",
+                "provider": identity.node_id,
+                "endpoint": "/temperature",
+            },
+            seq=1,
+        )
+        awareness.update_from_knowledge_object(
+            announcement,
+            now=100,
+            trust_state="privileged",
+        )
+        transport.datagrams.append(
+            Datagram(
+                data=encode_knowledge_object(announcement),
+                address=("127.0.0.1", 40404),
+            )
+        )
+
+        with self.assertLogs("streetmesh.daemon", level="INFO") as logs:
+            daemon.receive_once(awareness, duplicate_cache, transport, timeout=0)
+
+        entry = awareness.get_service(identity.node_id, "temperature")
+        self.assertIsNotNone(entry)
+        assert entry is not None
+        self.assertTrue(entry.is_local)
+        self.assertEqual(entry.seq, 1)
+        self.assertEqual(entry.last_seen, 100)
+        self.assertEqual(entry.trust_state, "privileged")
+        self.assertFalse(entry.accepted_limited)
+        self.assertEqual(len(duplicate_cache), 1)
+        self.assertEqual(transport.broadcasts, [])
+        self.assertIn("Suppressed received self-announcement", logs.output[0])
+
     def test_receive_loop_expires_stale_awareness(self) -> None:
         times = iter([0.0, 31.0])
         daemon = StreetMeshDaemon(
@@ -567,6 +610,19 @@ class DaemonAnnouncementTests(unittest.TestCase):
                 for data, _port, _host in transport.broadcasts
             ]
             self.assertEqual(types.count("SERVICE"), 2)
+
+            identity = load_identity(Path(temp_dir) / "identity.json")
+            awareness = AwarenessStore.load(
+                Path(temp_dir) / "awareness.json",
+                local_node_id=identity.node_id,
+            )
+            entry = awareness.get_service(identity.node_id, "temperature")
+            self.assertIsNotNone(entry)
+            assert entry is not None
+            self.assertTrue(entry.is_local)
+            self.assertEqual(entry.seq, 2)
+            self.assertEqual(entry.trust_state, "privileged")
+            self.assertFalse(entry.accepted_limited)
 
     def _config(self, data_dir: Path) -> StreetMeshConfig:
         return StreetMeshConfig(

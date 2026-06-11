@@ -315,7 +315,18 @@ class StreetMeshDaemon:
                 )
 
             if has_services and current_time >= next_service_announcement:
-                self.announce_services_once(identity, services, transport)
+                service_announcements = self.announce_services_once(
+                    identity,
+                    services,
+                    transport,
+                )
+                for announcement in service_announcements:
+                    awareness.update_from_knowledge_object(
+                        announcement,
+                        trust_state="privileged",
+                    )
+                if service_announcements:
+                    awareness.save()
                 next_service_announcement = (
                     current_time + self.config.node.service_announce_interval
                 )

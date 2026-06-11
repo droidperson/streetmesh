@@ -19,6 +19,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 * Trust and quarantine framework
 * Command-line inspection tools
 * Raspberry Pi deployment support
+* Formal three-node cross-platform mesh validation
 
 ### Validated Platforms
 
@@ -53,7 +54,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 12. Nodes broadcast NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 13. Nodes broadcast NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -130,6 +131,8 @@ examples/
 tests/                         unittest suite
 tools/
   two_node_discovery.py        Milestone 7 acceptance artifact verifier
+  three_node_mesh_validation.py
+                               Milestone 13 mesh artifact verifier
 docs/
   milestone-7-two-node-discovery.md
                                Manual two-node acceptance procedure
@@ -143,6 +146,8 @@ docs/
                                CLI inspection reference
   milestone-12-raspberry-pi-deployment.md
                                Raspberry Pi OS deployment guide
+  milestone-13-multi-node-mesh-validation.md
+                               Cross-platform three-node validation procedure
 ```
 
 ## Milestone 7 Acceptance Test
@@ -189,8 +194,18 @@ See the [Raspberry Pi deployment guide](docs/milestone-12-raspberry-pi-deploymen
 for Raspberry Pi OS setup, three-node LAN testing, inspection commands,
 systemd configuration, and network troubleshooting.
 
+## Milestone 13 Multi-Node Validation
+
+Follow the [multi-node mesh validation procedure](docs/milestone-13-multi-node-mesh-validation.md)
+for the formal Windows, Raspberry Pi, and third-node acceptance test. Saved
+artifacts can be checked with:
+
+```sh
+python tools/three_node_mesh_validation.py
+```
+
 ## Development Notes
 
 StreetMesh v0.1 remains dependency-free. Cryptographic signatures, invite
 tokens, service invocation, and a full administration UI are not implemented
-in Milestone 12.
+in Milestone 13.
