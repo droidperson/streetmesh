@@ -19,8 +19,9 @@ mode, and counts for persisted nodes, services, and trust entries.
 python streetmeshd.py --data-dir .\data --list-nodes
 ~~~
 
-Each row shows node name, node ID, trust state, first and last observation
-times, expiry, and whether the persisted claim is current or expired.
+Each row shows node name, node ID, trust state, signature status, first and last
+observation times, expiry, and whether the persisted claim is current or
+expired.
 
 ## Services
 
@@ -29,7 +30,8 @@ python streetmeshd.py --data-dir .\data --list-services
 ~~~
 
 Each row shows service name, provider ID, trust state, limited-acceptance marker
-when applicable, endpoint, protocol, expiry, and current or expired status.
+when applicable, signature status, endpoint, protocol, expiry, and current or
+expired status.
 
 ## Trust
 
