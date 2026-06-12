@@ -583,6 +583,15 @@ class DaemonAnnouncementTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(transport.closed)
             self.assertEqual(len(transport.broadcasts), 1)
+            identity = load_identity(Path(temp_dir) / "identity.json")
+            awareness = AwarenessStore.load(
+                Path(temp_dir) / "awareness.json",
+                local_node_id=identity.node_id,
+            )
+            local = awareness.get_by_node_id(identity.node_id)
+            self.assertIsNotNone(local)
+            assert local is not None
+            self.assertEqual(local.signature_status, "signed_self_verified")
 
     def test_runtime_periodically_announces_services(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -633,6 +642,7 @@ class DaemonAnnouncementTests(unittest.TestCase):
             self.assertEqual(entry.seq, 2)
             self.assertEqual(entry.trust_state, "privileged")
             self.assertFalse(entry.accepted_limited)
+            self.assertEqual(entry.signature_status, "signed_self_verified")
 
     def _config(self, data_dir: Path) -> StreetMeshConfig:
         return StreetMeshConfig(

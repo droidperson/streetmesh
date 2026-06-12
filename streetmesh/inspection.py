@@ -83,6 +83,7 @@ def format_nodes(nodes: Iterable[NodeEntry], *, now: int | None = None) -> str:
             entry.node_name,
             entry.node_id,
             entry.trust_state,
+            entry.signature_status,
             str(entry.first_seen),
             str(entry.last_seen),
             str(entry.expires),
@@ -91,7 +92,16 @@ def format_nodes(nodes: Iterable[NodeEntry], *, now: int | None = None) -> str:
         for entry in nodes
     ]
     return _format_table(
-        ["node_name", "node_id", "trust_state", "first_seen", "last_seen", "expires", "status"],
+        [
+            "node_name",
+            "node_id",
+            "trust_state",
+            "signature_status",
+            "first_seen",
+            "last_seen",
+            "expires",
+            "status",
+        ],
         rows,
         empty_message="No known nodes.",
     )
@@ -115,6 +125,7 @@ def format_services(
                 entry.service_name,
                 entry.provider,
                 trust,
+                entry.signature_status,
                 entry.endpoint or "-",
                 entry.protocol or "-",
                 str(entry.expires),
@@ -122,7 +133,16 @@ def format_services(
             ]
         )
     return _format_table(
-        ["service_name", "provider", "trust", "endpoint", "protocol", "expires", "status"],
+        [
+            "service_name",
+            "provider",
+            "trust",
+            "signature_status",
+            "endpoint",
+            "protocol",
+            "expires",
+            "status",
+        ],
         rows,
         empty_message="No known services.",
     )

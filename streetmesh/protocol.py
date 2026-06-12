@@ -8,11 +8,20 @@ import json
 import string
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal, get_args
 
 PROTOCOL_NAME = "streetmesh"
 PROTOCOL_VERSION = 1
 SIGNATURE_ALGORITHM = "HMAC-SHA256"
+SignatureStatus = Literal[
+    "unsigned",
+    "signed_self_verified",
+    "signed_unverified_remote",
+    "signature_invalid",
+    "signature_unsupported",
+    "signature_not_checked",
+]
+SIGNATURE_STATUSES = frozenset(get_args(SignatureStatus))
 SUPPORTED_TYPES = {
     "NODE",
     "SERVICE",
@@ -231,6 +240,39 @@ def verify_knowledge_object_signature(
     return hmac.compare_digest(signature, expected)
 
 
+def evaluate_signature_status(
+    knowledge_object: dict[str, Any],
+    *,
+    local_node_id: str | None = None,
+    local_signing_secret: str | None = None,
+) -> SignatureStatus:
+    """Classify a KO signature without exchanging origin signing secrets."""
+
+    if not isinstance(knowledge_object, dict):
+        return "signature_not_checked"
+
+    algorithm = knowledge_object.get("signature_algorithm")
+    signature = knowledge_object.get("signature")
+    if algorithm not in (None, SIGNATURE_ALGORITHM):
+        return "signature_unsupported"
+    if signature is None:
+        return "unsigned" if algorithm is None else "signature_invalid"
+    if algorithm != SIGNATURE_ALGORITHM:
+        return "signature_unsupported"
+
+    if knowledge_object.get("origin") == local_node_id:
+        if local_signing_secret is None:
+            return "signature_not_checked"
+        if verify_knowledge_object_signature(
+            knowledge_object,
+            local_signing_secret,
+        ):
+            return "signed_self_verified"
+        return "signature_invalid"
+
+    return "signed_unverified_remote"
+
+
 def validate_knowledge_object(
     knowledge_object: dict[str, Any],
     *,
@@ -329,19 +371,22 @@ def _validate_signature_fields(knowledge_object: dict[str, Any]) -> None:
     algorithm = knowledge_object.get("signature_algorithm")
     signature = knowledge_object["signature"]
     if signature is None:
-        if algorithm is not None:
+        if algorithm is not None and (
+            not isinstance(algorithm, str) or not algorithm.strip()
+        ):
             raise KnowledgeObjectError(
-                "signature_algorithm must be null when signature is null"
+                "signature_algorithm must be null or a non-empty string"
             )
         return
 
-    if algorithm != SIGNATURE_ALGORITHM:
+    if not isinstance(algorithm, str) or not algorithm.strip():
         raise KnowledgeObjectError(
-            f"unsupported signature algorithm: {algorithm!r}"
+            "signature_algorithm must be a non-empty string when signed"
         )
-    if (
-        not isinstance(signature, str)
-        or len(signature) != 64
+    if not isinstance(signature, str) or not signature:
+        raise KnowledgeObjectError("signature must be a non-empty string")
+    if algorithm == SIGNATURE_ALGORITHM and (
+        len(signature) != 64
         or any(character not in string.hexdigits for character in signature)
     ):
         raise KnowledgeObjectError("signature must be a SHA-256 hexadecimal digest")

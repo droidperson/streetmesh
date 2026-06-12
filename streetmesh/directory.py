@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 from typing import Any, Literal
 
+from .protocol import SIGNATURE_STATUSES, SignatureStatus
 from .trust import TRUST_STATES, TrustState
 
 
@@ -33,6 +34,7 @@ class NodeEntry:
     is_local: bool
     seq: int
     trust_state: TrustState = "unknown"
+    signature_status: SignatureStatus = "signature_not_checked"
 
     @classmethod
     def from_json(cls, value: object) -> "NodeEntry | None":
@@ -48,6 +50,10 @@ class NodeEntry:
             is_local = value["is_local"]
             seq = value["seq"]
             trust_state = value.get("trust_state", "unknown")
+            signature_status = value.get(
+                "signature_status",
+                "signature_not_checked",
+            )
         except KeyError:
             return None
 
@@ -67,6 +73,11 @@ class NodeEntry:
             return None
         if not isinstance(trust_state, str) or trust_state not in TRUST_STATES:
             return None
+        if (
+            not isinstance(signature_status, str)
+            or signature_status not in SIGNATURE_STATUSES
+        ):
+            return None
 
         return cls(
             node_id=node_id,
@@ -77,6 +88,7 @@ class NodeEntry:
             is_local=is_local,
             seq=seq,
             trust_state=trust_state,
+            signature_status=signature_status,
         )
 
 
@@ -96,6 +108,7 @@ class ServiceEntry:
     seq: int
     trust_state: TrustState = "unknown"
     accepted_limited: bool = False
+    signature_status: SignatureStatus = "signature_not_checked"
 
     @classmethod
     def from_json(cls, value: object) -> "ServiceEntry | None":
@@ -116,6 +129,10 @@ class ServiceEntry:
             seq = value["seq"]
             trust_state = value.get("trust_state", "unknown")
             accepted_limited = value.get("accepted_limited", False)
+            signature_status = value.get(
+                "signature_status",
+                "signature_not_checked",
+            )
         except KeyError:
             return None
 
@@ -147,6 +164,11 @@ class ServiceEntry:
             or not isinstance(accepted_limited, bool)
         ):
             return None
+        if (
+            not isinstance(signature_status, str)
+            or signature_status not in SIGNATURE_STATUSES
+        ):
+            return None
         return cls(
             service_name=service_name,
             provider=provider,
@@ -162,6 +184,7 @@ class ServiceEntry:
             seq=seq,
             trust_state=trust_state,
             accepted_limited=accepted_limited,
+            signature_status=signature_status,
         )
 
 
@@ -209,6 +232,7 @@ class AwarenessStore:
         now: int | None = None,
         trust_state: TrustState = "unknown",
         accepted_limited: bool = False,
+        signature_status: SignatureStatus = "signature_not_checked",
     ) -> AwarenessUpdate:
         if knowledge_object.get("type") == "SERVICE":
             return self._update_service(
@@ -216,6 +240,7 @@ class AwarenessStore:
                 now=now,
                 trust_state=trust_state,
                 accepted_limited=accepted_limited,
+                signature_status=signature_status,
             )
 
         node_data = _node_data_from_knowledge_object(knowledge_object)
@@ -241,16 +266,18 @@ class AwarenessStore:
             existing.is_local = is_local
             existing.seq = seq
             existing.trust_state = trust_state
+            existing.signature_status = signature_status
             if old_name != node_name:
                 self._node_names.pop(old_name, None)
             self._node_names[node_name] = node_id
             self._set_service_provider_name(node_id, node_name)
             LOGGER.info(
-                "Node refreshed: node_name=%s node_id=%s seq=%s expires=%s",
+                "Node refreshed: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s",
                 node_name,
                 node_id,
                 seq,
                 expires,
+                signature_status,
             )
             return AwarenessUpdate("refreshed", existing)
 
@@ -263,14 +290,16 @@ class AwarenessStore:
             is_local=is_local,
             seq=seq,
             trust_state=trust_state,
+            signature_status=signature_status,
         )
         self._store_entry(entry)
         LOGGER.info(
-            "Node discovered: node_name=%s node_id=%s seq=%s expires=%s",
+            "Node discovered: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s",
             node_name,
             node_id,
             seq,
             expires,
+            signature_status,
         )
         return AwarenessUpdate("discovered", entry)
 
@@ -425,6 +454,7 @@ class AwarenessStore:
         now: int | None = None,
         trust_state: TrustState = "unknown",
         accepted_limited: bool = False,
+        signature_status: SignatureStatus = "signature_not_checked",
     ) -> AwarenessUpdate:
         service_data = _service_data_from_knowledge_object(knowledge_object)
         if service_data is None:
@@ -454,12 +484,14 @@ class AwarenessStore:
             existing.seq = seq
             existing.trust_state = trust_state
             existing.accepted_limited = accepted_limited
+            existing.signature_status = signature_status
             LOGGER.info(
-                "SERVICE refreshed: service_name=%s provider=%s seq=%s expires=%s",
+                "SERVICE refreshed: service_name=%s provider=%s seq=%s expires=%s signature_status=%s",
                 service_name,
                 provider,
                 seq,
                 expires,
+                signature_status,
             )
             return AwarenessUpdate("refreshed", existing)
 
@@ -478,14 +510,16 @@ class AwarenessStore:
             seq=seq,
             trust_state=trust_state,
             accepted_limited=accepted_limited,
+            signature_status=signature_status,
         )
         self._services[key] = entry
         LOGGER.info(
-            "SERVICE discovered: service_name=%s provider=%s seq=%s expires=%s",
+            "SERVICE discovered: service_name=%s provider=%s seq=%s expires=%s signature_status=%s",
             service_name,
             provider,
             seq,
             expires,
+            signature_status,
         )
         return AwarenessUpdate("discovered", entry)
 

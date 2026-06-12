@@ -11,6 +11,7 @@ from .directory import DuplicateCache
 from .protocol import (
     KnowledgeObjectError,
     encode_knowledge_object,
+    evaluate_signature_status,
     validate_knowledge_object,
 )
 from .policy import ReviewPolicy
@@ -76,13 +77,22 @@ class GossipForwarder:
 
         if self.trust_store is not None and self.policy is not None:
             trust_state = self.trust_store.get_state(knowledge_object.get("origin"))
-            decision = self.policy.decide(knowledge_object, trust_state)
+            signature_status = evaluate_signature_status(
+                knowledge_object,
+                local_node_id=self.local_node_id,
+            )
+            decision = self.policy.decide(
+                knowledge_object,
+                trust_state,
+                signature_status,
+            )
             if not decision.forward:
                 LOGGER.info(
-                    "Gossip not forwarded: ko_id=%s reason=policy-%s trust_state=%s",
+                    "Gossip not forwarded: ko_id=%s reason=policy-%s trust_state=%s signature_status=%s",
                     ko_id,
                     decision.action,
                     trust_state,
+                    decision.signature_status,
                 )
                 return None
 
@@ -108,10 +118,14 @@ class GossipForwarder:
             host=self.host,
         )
         LOGGER.info(
-            "Gossip forwarded: ko_id=%s origin=%s ttl=%s forwarded_ttl=%s",
+            "Gossip forwarded: ko_id=%s origin=%s ttl=%s forwarded_ttl=%s signature_status=%s",
             ko_id,
             knowledge_object.get("origin"),
             ttl,
             forwarded["ttl"],
+            evaluate_signature_status(
+                knowledge_object,
+                local_node_id=self.local_node_id,
+            ),
         )
         return forwarded

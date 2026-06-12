@@ -38,6 +38,7 @@ class QuarantineStore:
         *,
         trust_state: str,
         reason: str,
+        signature_status: str = "signature_not_checked",
         now: int | None = None,
     ) -> None:
         ko_id = knowledge_object.get("ko_id")
@@ -48,6 +49,7 @@ class QuarantineStore:
             "origin": knowledge_object.get("origin"),
             "type": knowledge_object.get("type"),
             "trust_state": trust_state,
+            "signature_status": signature_status,
             "reason": reason,
             "received": int(time.time() if now is None else now),
             "knowledge_object": knowledge_object,

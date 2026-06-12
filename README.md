@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 14 Complete
+Milestone 15 Complete
 
 ### Implemented Features
 
@@ -23,6 +23,7 @@ Milestone 14 Complete
 * Raspberry Pi deployment support
 * Formal three-node cross-platform mesh validation
 * HMAC-SHA256 signed Knowledge Objects
+* Signature-aware trust policy and inspection
 
 ### Validated Platforms
 
@@ -40,6 +41,7 @@ Milestone 14 Complete
 * Persistent identities
 * Persistent per-node signing secrets
 * Signed local NODE and SERVICE claims
+* Persisted signature status for node and service awareness
 
 ## Vision
 
@@ -60,12 +62,13 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 14. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 15. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
 trust keeps unknown awareness visible without treating it as automatically
-trusted.
+trusted, while signature-aware policy distinguishes locally verified,
+remotely unverified, unsigned, invalid, and unsupported claims.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -156,6 +159,8 @@ docs/
                                Cross-platform three-node validation procedure
   milestone-14-signed-knowledge-objects.md
                                HMAC signing design and limitations
+  milestone-15-signature-aware-trust-policy.md
+                               Signature status, policy, and inspection
 ```
 
 ## Milestone 7 Acceptance Test
@@ -218,8 +223,15 @@ See [Signed Knowledge Objects](docs/milestone-14-signed-knowledge-objects.md)
 for the canonical HMAC-SHA256 design, automatic identity migration, verification
 scope, limitations, and planned evolution toward public-key node identities.
 
+## Milestone 15 Signature-Aware Trust Policy
+
+See the [signature-aware trust policy guide](docs/milestone-15-signature-aware-trust-policy.md)
+for signature status meanings, interim HMAC verification behavior, policy and
+inspection integration, limitations, and the public-key evolution path.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 14 uses an interim local
-HMAC signing model; public-key cryptography, certificates, invite tokens,
-service invocation, and a full administration UI are not implemented.
+StreetMesh v0.1 remains dependency-free. Milestone 15 makes the interim HMAC
+model visible to trust policy without exchanging secrets. Public-key
+cryptography, certificates, invite tokens, service invocation, and a full
+administration UI are not implemented.

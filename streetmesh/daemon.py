@@ -16,6 +16,7 @@ from .protocol import (
     create_node_knowledge_object,
     decode_knowledge_object,
     encode_knowledge_object,
+    evaluate_signature_status,
 )
 from .services import ServiceConfigError, ServiceRegistry
 from .quarantine import QuarantineStore
@@ -159,7 +160,7 @@ class StreetMeshDaemon:
         )
 
         LOGGER.info(
-            "NODE announcement broadcast: node_name=%s ko_id=%s seq=%s ttl=%s expires=%s",
+            "NODE announcement broadcast: node_name=%s ko_id=%s seq=%s ttl=%s expires=%s signature_status=signed_self_verified",
             identity.node_name,
             knowledge_object["ko_id"],
             knowledge_object["seq"],
@@ -187,7 +188,7 @@ class StreetMeshDaemon:
                 host=self.config.node.broadcast_host,
             )
             LOGGER.info(
-                "SERVICE announced: service_name=%s provider=%s ko_id=%s seq=%s ttl=%s expires=%s",
+                "SERVICE announced: service_name=%s provider=%s ko_id=%s seq=%s ttl=%s expires=%s signature_status=signed_self_verified",
                 knowledge_object["subject"],
                 identity.node_id,
                 knowledge_object["ko_id"],
@@ -207,6 +208,7 @@ class StreetMeshDaemon:
         trust_store: TrustStore | None = None,
         policy: ReviewPolicy | None = None,
         quarantine: QuarantineStore | None = None,
+        local_signing_secret: str | None = None,
         timeout: float | None = None,
     ) -> None:
         datagram = transport.receive(timeout=timeout)
@@ -227,24 +229,39 @@ class StreetMeshDaemon:
         if not duplicate_cache.remember(knowledge_object.get("ko_id")):
             return
 
-        if knowledge_object.get("origin") == awareness.local_node_id:
+        signature_status = evaluate_signature_status(
+            knowledge_object,
+            local_node_id=awareness.local_node_id,
+            local_signing_secret=local_signing_secret,
+        )
+
+        if (
+            knowledge_object.get("origin") == awareness.local_node_id
+            and signature_status != "signature_invalid"
+        ):
             LOGGER.info(
-                "Suppressed received self-announcement: node_id=%s ko_id=%s",
+                "Suppressed received self-announcement: node_id=%s ko_id=%s signature_status=%s",
                 awareness.local_node_id,
                 knowledge_object.get("ko_id"),
+                signature_status,
             )
             return
 
         active_trust_store = trust_store or TrustStore()
         active_policy = policy or ReviewPolicy()
         trust_state = active_trust_store.get_state(knowledge_object.get("origin"))
-        decision = active_policy.decide(knowledge_object, trust_state)
+        decision = active_policy.decide(
+            knowledge_object,
+            trust_state,
+            signature_status,
+        )
         LOGGER.info(
-            "Policy %s: type=%s origin=%s trust_state=%s reason=%s ko_id=%s",
+            "Policy %s: type=%s origin=%s trust_state=%s signature_status=%s reason=%s ko_id=%s",
             decision.action,
             knowledge_object.get("type"),
             knowledge_object.get("origin"),
             trust_state,
+            decision.signature_status,
             decision.reason,
             knowledge_object.get("ko_id"),
         )
@@ -257,6 +274,7 @@ class StreetMeshDaemon:
                     knowledge_object,
                     trust_state=trust_state,
                     reason=decision.reason,
+                    signature_status=decision.signature_status,
                 )
             return
 
@@ -264,6 +282,7 @@ class StreetMeshDaemon:
             knowledge_object,
             trust_state=trust_state,
             accepted_limited=decision.action == "accepted-limited",
+            signature_status=decision.signature_status,
         )
         if update.status != "ignored":
             awareness.save()
@@ -312,7 +331,15 @@ class StreetMeshDaemon:
             current_time = self._clock()
             if current_time >= next_node_announcement:
                 announcement = self.announce_once(identity, transport)
-                awareness.update_from_knowledge_object(announcement)
+                awareness.update_from_knowledge_object(
+                    announcement,
+                    trust_state="privileged",
+                    signature_status=evaluate_signature_status(
+                        announcement,
+                        local_node_id=identity.node_id,
+                        local_signing_secret=identity.signing_secret,
+                    ),
+                )
                 awareness.save()
                 next_node_announcement = (
                     current_time + self.config.node.announce_interval
@@ -328,6 +355,11 @@ class StreetMeshDaemon:
                     awareness.update_from_knowledge_object(
                         announcement,
                         trust_state="privileged",
+                        signature_status=evaluate_signature_status(
+                            announcement,
+                            local_node_id=identity.node_id,
+                            local_signing_secret=identity.signing_secret,
+                        ),
                     )
                 if service_announcements:
                     awareness.save()
@@ -350,6 +382,7 @@ class StreetMeshDaemon:
                 trust_store=trust_store,
                 policy=policy,
                 quarantine=quarantine,
+                local_signing_secret=identity.signing_secret,
                 timeout=timeout,
             )
 
