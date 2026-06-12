@@ -138,6 +138,7 @@ class ServiceRegistry:
         *,
         provider: str,
         now: int | None = None,
+        signing_secret: str | None = None,
     ) -> list[dict[str, Any]]:
         announcements = []
         for service in self.list_local_services():
@@ -150,6 +151,7 @@ class ServiceRegistry:
                     payload=service.payload(provider),
                     seq=sequence,
                     now=now,
+                    signing_secret=signing_secret,
                 )
             )
         return announcements

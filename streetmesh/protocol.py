@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
+import string
 import time
 import uuid
 from typing import Any
 
 PROTOCOL_NAME = "streetmesh"
 PROTOCOL_VERSION = 1
+SIGNATURE_ALGORITHM = "HMAC-SHA256"
 SUPPORTED_TYPES = {
     "NODE",
     "SERVICE",
@@ -45,13 +49,15 @@ def create_node_knowledge_object(
     expires_in: int | None = None,
     expires_in_seconds: int | None = None,
     now: int | None = None,
+    signing_secret: str | None = None,
 ) -> dict[str, Any]:
     """Create a NODE Knowledge Object.
 
     TTL is a gossip hop count. Expiry is controlled separately by expires_in or
     expires_in_seconds, defaulting to 120 seconds for NODE objects.
 
-    Signatures are intentionally left as null in v0.1 Milestone 2.
+    When signing_secret is supplied, the returned object is signed with the
+    local identity's HMAC-SHA256 secret.
     """
 
     created = int(time.time() if now is None else now)
@@ -70,9 +76,12 @@ def create_node_knowledge_object(
         "seq": seq,
         "ttl": ttl,
         "payload": payload,
+        "signature_algorithm": None,
         "signature": None,
     }
     validate_knowledge_object(knowledge_object, now=created)
+    if signing_secret is not None:
+        sign_knowledge_object(knowledge_object, signing_secret)
     return knowledge_object
 
 
@@ -85,6 +94,7 @@ def create_service_knowledge_object(
     ttl: int = 3,
     expires_in: int = 300,
     now: int | None = None,
+    signing_secret: str | None = None,
 ) -> dict[str, Any]:
     """Create a SERVICE Knowledge Object with a 300-second default expiry."""
 
@@ -106,9 +116,12 @@ def create_service_knowledge_object(
         "seq": seq,
         "ttl": ttl,
         "payload": payload,
+        "signature_algorithm": None,
         "signature": None,
     }
     validate_knowledge_object(knowledge_object, now=created)
+    if signing_secret is not None:
+        sign_knowledge_object(knowledge_object, signing_secret)
     return knowledge_object
 
 
@@ -152,6 +165,72 @@ encode_message = encode_knowledge_object
 decode_message = decode_knowledge_object
 
 
+def canonicalize_knowledge_object(knowledge_object: dict[str, Any]) -> bytes:
+    """Return deterministic JSON bytes for signing, excluding signature."""
+
+    if not isinstance(knowledge_object, dict):
+        raise KnowledgeObjectError("knowledge object must be a dictionary")
+    canonical_object = {
+        key: value
+        for key, value in knowledge_object.items()
+        if key != "signature"
+    }
+    try:
+        return json.dumps(
+            canonical_object,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise KnowledgeObjectError(
+            f"knowledge object is not JSON serializable: {exc}"
+        ) from exc
+
+
+def sign_knowledge_object(
+    knowledge_object: dict[str, Any],
+    signing_secret: str,
+) -> dict[str, Any]:
+    """Sign a Knowledge Object in place and return it."""
+
+    if not isinstance(knowledge_object, dict):
+        raise KnowledgeObjectError("knowledge object must be a dictionary")
+    secret = _decode_signing_secret(signing_secret)
+    knowledge_object["signature_algorithm"] = SIGNATURE_ALGORITHM
+    knowledge_object["signature"] = None
+    knowledge_object["signature"] = hmac.new(
+        secret,
+        canonicalize_knowledge_object(knowledge_object),
+        hashlib.sha256,
+    ).hexdigest()
+    return knowledge_object
+
+
+def verify_knowledge_object_signature(
+    knowledge_object: dict[str, Any],
+    signing_secret: str,
+) -> bool:
+    """Verify an HMAC signature when the origin secret is locally available."""
+
+    try:
+        secret = _decode_signing_secret(signing_secret)
+        signature = knowledge_object.get("signature")
+        if (
+            knowledge_object.get("signature_algorithm") != SIGNATURE_ALGORITHM
+            or not isinstance(signature, str)
+        ):
+            return False
+        expected = hmac.new(
+            secret,
+            canonicalize_knowledge_object(knowledge_object),
+            hashlib.sha256,
+        ).hexdigest()
+    except (KnowledgeObjectError, AttributeError):
+        return False
+    return hmac.compare_digest(signature, expected)
+
+
 def validate_knowledge_object(
     knowledge_object: dict[str, Any],
     *,
@@ -193,8 +272,7 @@ def validate_knowledge_object(
     if expires <= current_time:
         raise KnowledgeObjectError("knowledge object is expired")
 
-    if knowledge_object["signature"] is not None:
-        raise KnowledgeObjectError("signature must be null")
+    _validate_signature_fields(knowledge_object)
 
     if not isinstance(knowledge_object["payload"], dict):
         raise KnowledgeObjectError("payload must be a JSON object")
@@ -245,6 +323,40 @@ def _validate_ttl(value: object) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise KnowledgeObjectError("ttl must be a non-negative integer")
     return value
+
+
+def _validate_signature_fields(knowledge_object: dict[str, Any]) -> None:
+    algorithm = knowledge_object.get("signature_algorithm")
+    signature = knowledge_object["signature"]
+    if signature is None:
+        if algorithm is not None:
+            raise KnowledgeObjectError(
+                "signature_algorithm must be null when signature is null"
+            )
+        return
+
+    if algorithm != SIGNATURE_ALGORITHM:
+        raise KnowledgeObjectError(
+            f"unsupported signature algorithm: {algorithm!r}"
+        )
+    if (
+        not isinstance(signature, str)
+        or len(signature) != 64
+        or any(character not in string.hexdigits for character in signature)
+    ):
+        raise KnowledgeObjectError("signature must be a SHA-256 hexadecimal digest")
+
+
+def _decode_signing_secret(signing_secret: object) -> bytes:
+    if (
+        not isinstance(signing_secret, str)
+        or len(signing_secret) != 64
+        or any(character not in string.hexdigits for character in signing_secret)
+    ):
+        raise KnowledgeObjectError(
+            "signing_secret must be 64 hexadecimal characters"
+        )
+    return bytes.fromhex(signing_secret)
 
 
 def _resolve_expires_in(

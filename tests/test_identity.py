@@ -23,7 +23,35 @@ class IdentityTests(unittest.TestCase):
             self.assertTrue(identity.node_id)
             self.assertTrue(identity.created)
             self.assertEqual(len(identity.fingerprint), 64)
+            self.assertEqual(len(identity.signing_secret), 64)
+            persisted = json.loads((data_dir / "identity.json").read_text(encoding="utf-8"))
+            self.assertEqual(persisted["signing_secret"], identity.signing_secret)
             self.assertIn("Identity created:", logs.output[0])
+
+    def test_upgrades_existing_identity_with_signing_secret(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir) / "data"
+            data_dir.mkdir()
+            identity_path = data_dir / "identity.json"
+            legacy_identity = {
+                "node_id": "550e8400-e29b-41d4-a716-446655440000",
+                "node_name": "node01@local@mesh",
+                "created": "2026-06-09T00:00:00+00:00",
+                "fingerprint": "f" * 64,
+            }
+            identity_path.write_text(json.dumps(legacy_identity), encoding="utf-8")
+
+            with self.assertLogs("streetmesh.identity", level="INFO") as logs:
+                identity = load_or_create_identity(data_dir, "changed@local@mesh")
+
+            self.assertEqual(identity.node_id, legacy_identity["node_id"])
+            self.assertEqual(identity.node_name, legacy_identity["node_name"])
+            self.assertEqual(len(identity.signing_secret), 64)
+            persisted = json.loads(identity_path.read_text(encoding="utf-8"))
+            self.assertEqual(persisted["node_id"], legacy_identity["node_id"])
+            self.assertEqual(persisted["node_name"], legacy_identity["node_name"])
+            self.assertEqual(persisted["signing_secret"], identity.signing_secret)
+            self.assertTrue(any("Identity upgraded" in line for line in logs.output))
 
     def test_loads_existing_identity_stably(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

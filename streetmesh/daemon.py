@@ -149,6 +149,7 @@ class StreetMeshDaemon:
                 "fingerprint": identity.fingerprint,
             },
             seq=self._seq,
+            signing_secret=identity.signing_secret,
         )
         encoded = encode_knowledge_object(knowledge_object)
         transport.send_broadcast(
@@ -175,7 +176,10 @@ class StreetMeshDaemon:
     ) -> list[dict[str, object]]:
         """Create and broadcast one claim for each registered local service."""
 
-        announcements = services.create_announcements(provider=identity.node_id)
+        announcements = services.create_announcements(
+            provider=identity.node_id,
+            signing_secret=identity.signing_secret,
+        )
         for knowledge_object in announcements:
             transport.send_broadcast(
                 encode_knowledge_object(knowledge_object),

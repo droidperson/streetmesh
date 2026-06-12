@@ -37,3 +37,10 @@ data-pi01/
 # Logs
 
 *.log
+m14-data/
+
+# StreetMesh runtime data
+data/
+m13-data/
+m14-data/
+*.log

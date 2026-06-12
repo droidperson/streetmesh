@@ -8,6 +8,8 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
+Milestone 14 Complete
+
 ### Implemented Features
 
 * Node identity management
@@ -20,11 +22,13 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 * Command-line inspection tools
 * Raspberry Pi deployment support
 * Formal three-node cross-platform mesh validation
+* HMAC-SHA256 signed Knowledge Objects
 
 ### Validated Platforms
 
 * Windows 11
 * Raspberry Pi OS
+* Cross-platform mesh operation validated
 
 ### Validation Completed
 
@@ -34,6 +38,8 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 * Service propagation
 * Trust management
 * Persistent identities
+* Persistent per-node signing secrets
+* Signed local NODE and SERVICE claims
 
 ## Vision
 
@@ -54,7 +60,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 13. Nodes broadcast NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 14. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -148,6 +154,8 @@ docs/
                                Raspberry Pi OS deployment guide
   milestone-13-multi-node-mesh-validation.md
                                Cross-platform three-node validation procedure
+  milestone-14-signed-knowledge-objects.md
+                               HMAC signing design and limitations
 ```
 
 ## Milestone 7 Acceptance Test
@@ -204,8 +212,14 @@ artifacts can be checked with:
 python tools/three_node_mesh_validation.py
 ```
 
+## Milestone 14 Signed Knowledge Objects
+
+See [Signed Knowledge Objects](docs/milestone-14-signed-knowledge-objects.md)
+for the canonical HMAC-SHA256 design, automatic identity migration, verification
+scope, limitations, and planned evolution toward public-key node identities.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Cryptographic signatures, invite
-tokens, service invocation, and a full administration UI are not implemented
-in Milestone 13.
+StreetMesh v0.1 remains dependency-free. Milestone 14 uses an interim local
+HMAC signing model; public-key cryptography, certificates, invite tokens,
+service invocation, and a full administration UI are not implemented.

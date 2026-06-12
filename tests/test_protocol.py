@@ -10,15 +10,21 @@ from streetmesh.protocol import (
     KnowledgeObjectError,
     create_node_knowledge_object,
     create_service_knowledge_object,
+    canonicalize_knowledge_object,
     decode_knowledge_object,
     decode_message,
     encode_knowledge_object,
     encode_message,
+    SIGNATURE_ALGORITHM,
+    sign_knowledge_object,
     validate_knowledge_object,
+    verify_knowledge_object_signature,
 )
 
 
 class KnowledgeObjectTests(unittest.TestCase):
+    SIGNING_SECRET = "a" * 64
+
     def test_creates_node_knowledge_object(self) -> None:
         ko = create_node_knowledge_object(
             origin="node-a",
@@ -40,7 +46,14 @@ class KnowledgeObjectTests(unittest.TestCase):
         self.assertEqual(ko["seq"], 7)
         self.assertEqual(ko["ttl"], 9)
         self.assertEqual(ko["payload"], {"node_name": "node01@local@mesh"})
+        self.assertIsNone(ko["signature_algorithm"])
         self.assertIsNone(ko["signature"])
+
+    def test_accepts_legacy_unsigned_object_without_algorithm_field(self) -> None:
+        ko = self._valid_ko()
+        ko.pop("signature_algorithm")
+
+        validate_knowledge_object(ko, now=1_700_000_000)
 
     def test_node_defaults_ttl_and_expiry_independently(self) -> None:
         ko = create_node_knowledge_object(
@@ -72,6 +85,73 @@ class KnowledgeObjectTests(unittest.TestCase):
         self.assertEqual(ko["subject"], "temperature")
         self.assertEqual(ko["ttl"], 3)
         self.assertEqual(ko["expires"], 1_700_000_300)
+
+    def test_signing_knowledge_object_produces_signature(self) -> None:
+        ko = self._valid_ko()
+
+        signed = sign_knowledge_object(ko, self.SIGNING_SECRET)
+
+        self.assertIs(signed, ko)
+        self.assertEqual(signed["signature_algorithm"], SIGNATURE_ALGORITHM)
+        self.assertEqual(len(signed["signature"]), 64)
+        self.assertTrue(
+            verify_knowledge_object_signature(signed, self.SIGNING_SECRET)
+        )
+
+    def test_canonical_signing_is_stable_across_dict_insertion_order(self) -> None:
+        first = self._valid_ko()
+        second = dict(reversed(list(first.items())))
+        second["payload"] = dict(reversed(list(first["payload"].items())))
+
+        sign_knowledge_object(first, self.SIGNING_SECRET)
+        sign_knowledge_object(second, self.SIGNING_SECRET)
+
+        self.assertEqual(
+            canonicalize_knowledge_object(first),
+            canonicalize_knowledge_object(second),
+        )
+        self.assertEqual(first["signature"], second["signature"])
+
+    def test_tampering_with_signed_object_fails_verification(self) -> None:
+        ko = self._valid_ko()
+        sign_knowledge_object(ko, self.SIGNING_SECRET)
+
+        ko["subject"] = "tampered@local@mesh"
+
+        self.assertFalse(
+            verify_knowledge_object_signature(ko, self.SIGNING_SECRET)
+        )
+
+    def test_node_knowledge_object_can_be_created_signed(self) -> None:
+        ko = create_node_knowledge_object(
+            origin="node-a",
+            subject="node-a",
+            payload={"node_name": "node01@local@mesh"},
+            now=1_700_000_000,
+            signing_secret=self.SIGNING_SECRET,
+        )
+
+        self.assertEqual(ko["signature_algorithm"], SIGNATURE_ALGORITHM)
+        self.assertTrue(
+            verify_knowledge_object_signature(ko, self.SIGNING_SECRET)
+        )
+
+    def test_service_knowledge_object_can_be_created_signed(self) -> None:
+        ko = create_service_knowledge_object(
+            origin="node-a",
+            service_name="temperature",
+            payload={
+                "service_name": "temperature",
+                "provider": "node-a",
+            },
+            now=1_700_000_000,
+            signing_secret=self.SIGNING_SECRET,
+        )
+
+        self.assertEqual(ko["signature_algorithm"], SIGNATURE_ALGORITHM)
+        self.assertTrue(
+            verify_knowledge_object_signature(ko, self.SIGNING_SECRET)
+        )
 
     def test_rejects_service_without_required_provider(self) -> None:
         with self.assertRaisesRegex(KnowledgeObjectError, "provider"):

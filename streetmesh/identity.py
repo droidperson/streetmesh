@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 import hashlib
 import json
 import logging
 from pathlib import Path
+import secrets
+import string
 import uuid
 
 
@@ -22,6 +24,7 @@ class NodeIdentity:
     node_name: str
     created: str
     fingerprint: str
+    signing_secret: str = field(repr=False)
 
     @classmethod
     def from_json(cls, value: object) -> "NodeIdentity":
@@ -33,11 +36,16 @@ class NodeIdentity:
         if missing:
             raise IdentityError(f"identity file missing required field(s): {', '.join(missing)}")
 
+        signing_secret = value.get("signing_secret", "")
+        if "signing_secret" in value and not _is_signing_secret(signing_secret):
+            raise IdentityError("identity signing_secret must be 64 hexadecimal characters")
+
         return cls(
             node_id=str(value["node_id"]),
             node_name=str(value["node_name"]),
             created=str(value["created"]),
             fingerprint=str(value["fingerprint"]),
+            signing_secret=signing_secret,
         )
 
     def to_json(self) -> dict[str, str]:
@@ -46,6 +54,7 @@ class NodeIdentity:
             "node_name": self.node_name,
             "created": self.created,
             "fingerprint": self.fingerprint,
+            "signing_secret": self.signing_secret,
         }
 
 
@@ -59,6 +68,10 @@ def load_or_create_identity(data_dir: Path, node_name: str) -> NodeIdentity:
     identity_path = data_dir / "identity.json"
     if identity_path.exists():
         identity = load_identity(identity_path)
+        if not identity.signing_secret:
+            identity = replace(identity, signing_secret=_create_signing_secret())
+            save_identity(identity_path, identity)
+            LOGGER.info("Identity upgraded with signing secret: %s", identity_path)
         LOGGER.info("Identity loaded: %s", identity_path)
         return identity
 
@@ -97,6 +110,7 @@ def create_identity(node_name: str) -> NodeIdentity:
         node_name=node_name,
         created=created,
         fingerprint=fingerprint,
+        signing_secret=_create_signing_secret(),
     )
 
 
@@ -108,3 +122,15 @@ def _fingerprint(*, node_id: str, node_name: str, created: str) -> str:
     digest.update(b"\0")
     digest.update(created.encode("utf-8"))
     return digest.hexdigest()
+
+
+def _create_signing_secret() -> str:
+    return secrets.token_hex(32)
+
+
+def _is_signing_secret(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in string.hexdigits for character in value)
+    )

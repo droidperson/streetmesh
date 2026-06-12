@@ -92,6 +92,31 @@ class GossipForwarderTests(unittest.TestCase):
                 self.assertEqual(forwarded[field], value)
         self.assertEqual(forwarded["ttl"], original["ttl"] - 1)
 
+    def test_preserves_original_signature_when_forwarding(self) -> None:
+        transport = FakeTransport()
+        original = create_node_knowledge_object(
+            origin="remote-node-id",
+            subject="remote@local@mesh",
+            payload={
+                "node_id": "remote-node-id",
+                "node_name": "remote@local@mesh",
+                "fingerprint": "a" * 64,
+            },
+            ttl=3,
+            now=1_000,
+            signing_secret="b" * 64,
+        )
+
+        forwarded = self._forwarder(transport).forward(original, now=1_000)
+
+        self.assertIsNotNone(forwarded)
+        assert forwarded is not None
+        self.assertEqual(forwarded["signature"], original["signature"])
+        self.assertEqual(
+            forwarded["signature_algorithm"],
+            original["signature_algorithm"],
+        )
+
     def test_duplicate_object_is_not_forwarded_twice(self) -> None:
         transport = FakeTransport()
         forwarder = self._forwarder(transport)

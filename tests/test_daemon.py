@@ -16,6 +16,7 @@ from streetmesh.protocol import (
     create_service_knowledge_object,
     decode_knowledge_object,
     encode_knowledge_object,
+    verify_knowledge_object_signature,
 )
 from streetmesh.policy import ReviewPolicy
 from streetmesh.quarantine import QuarantineStore
@@ -84,6 +85,9 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertEqual(decoded["subject"], identity.node_name)
         self.assertEqual(decoded["payload"]["node_id"], identity.node_id)
         self.assertEqual(decoded["payload"]["node_name"], identity.node_name)
+        self.assertTrue(
+            verify_knowledge_object_signature(decoded, identity.signing_secret)
+        )
         log_line = logs.output[0]
         self.assertIn("NODE announcement broadcast", log_line)
         self.assertIn("node_name=node01@local@mesh", log_line)
@@ -128,6 +132,12 @@ class DaemonAnnouncementTests(unittest.TestCase):
         self.assertEqual(decoded["type"], "SERVICE")
         self.assertEqual(decoded["subject"], "temperature")
         self.assertEqual(decoded["payload"]["provider"], self._identity().node_id)
+        self.assertTrue(
+            verify_knowledge_object_signature(
+                decoded,
+                self._identity().signing_secret,
+            )
+        )
         self.assertIn("SERVICE announced", logs.output[0])
 
     def test_receive_once_updates_awareness_store_for_node_ko(self) -> None:
@@ -643,6 +653,7 @@ class DaemonAnnouncementTests(unittest.TestCase):
             node_name="node01@local@mesh",
             created="2026-06-09T00:00:00+00:00",
             fingerprint="f" * 64,
+            signing_secret="a" * 64,
         )
 
 
