@@ -12,6 +12,7 @@ from .directory import AwarenessStore, NodeEntry, ServiceEntry
 from .identity import NodeIdentity, load_identity
 from .name_bindings import NameBinding, NameBindingRegistry, NameConflict
 from .policy import ReviewPolicy
+from .preflight import ServicePreflightResult
 from .resolver import NodeResolution, ServiceResolution
 from .trust import TrustEntry, TrustStore
 
@@ -413,6 +414,35 @@ def format_name_conflicts(
         ],
         rows,
         empty_message="No name conflicts.",
+    )
+
+
+def format_service_preflight(result: ServicePreflightResult) -> str:
+    return _format_values(
+        [
+            ("service_name", result.service_name),
+            ("decision", result.decision),
+            ("reason", result.reason),
+            ("provider_node_name", result.provider_node_name or "-"),
+            ("provider_node_id", result.provider_node_id or "-"),
+            ("provider_fingerprint", result.provider_fingerprint or "-"),
+            ("public_key_id", result.public_key_id or "-"),
+            ("trust_state", result.trust_state or "-"),
+            ("signature_status", result.signature_status or "-"),
+            ("binding_status", result.binding_status or "-"),
+            ("provider_status", result.provider_status),
+            ("service_status", result.service_status or "-"),
+            ("protocol", result.protocol or "-"),
+            ("endpoint", result.endpoint or "-"),
+            ("provider_usable", "yes" if result.provider_usable else "no"),
+            ("service_limited", "yes" if result.service_limited else "no"),
+            (
+                "warnings",
+                "; ".join(result.warnings) if result.warnings else "none",
+            ),
+            ("candidate_count", str(result.candidate_count)),
+            ("access_action", result.access_action),
+        ]
     )
 
 

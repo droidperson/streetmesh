@@ -19,6 +19,7 @@ from .inspection import (
     format_nodes,
     format_node_resolution,
     format_services,
+    format_service_preflight,
     format_service_resolution,
     format_status,
     format_trust,
@@ -26,6 +27,7 @@ from .inspection import (
     format_trust_detail,
     load_inspection_state,
 )
+from .preflight import preflight_service
 from .resolver import resolve_node, resolve_service
 from .trust import TrustStore, TrustStoreError
 
@@ -153,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="list observed claims that conflict with bound names and exit",
     )
+    state_actions.add_argument(
+        "--preflight-service",
+        metavar="SERVICE_NAME",
+        help="evaluate service access safety without performing network access",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -198,6 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.list_name_bindings
         or args.show_name_binding
         or args.list_name_conflicts
+        or args.preflight_service
     ):
         try:
             if args.trust_node:
@@ -303,6 +311,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     format_name_conflicts(
                         state.list_name_conflicts(),
                         state.trust,
+                    )
+                )
+            elif args.preflight_service:
+                state = load_inspection_state(config.node.data_dir)
+                print(
+                    format_service_preflight(
+                        preflight_service(
+                            state.awareness,
+                            args.preflight_service,
+                            name_conflicts=state.list_name_conflicts(),
+                        )
                     )
                 )
             else:

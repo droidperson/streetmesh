@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 19 Complete
+Milestone 20 Complete
 
 ### Implemented Features
 
@@ -28,6 +28,7 @@ Milestone 19 Complete
 * Trust promotion and stable node-name binding
 * Public-key-ready identity metadata and signer/verifier abstraction
 * Persistent local name ownership and conflict handling
+* Read-only service access preflight decisions
 
 ### Validated Platforms
 
@@ -50,6 +51,7 @@ Milestone 19 Complete
 * Trusted-name conflict detection and continuity protection
 * Safe public identity awareness without secret or private-key disclosure
 * Conflict-aware node and service-provider resolution
+* Conservative trust, binding, expiry, and protocol access checks
 
 ## Vision
 
@@ -70,7 +72,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 19. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 20. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -86,6 +88,9 @@ verification interfaces while HMAC-SHA256 remains the only active algorithm.
 No public-key signature is generated or accepted as verified yet.
 Persistent local name bindings now prevent a newer node ID from silently
 replacing an established local or trusted identity.
+Service access preflight can now evaluate whether a future access attempt would
+be allowed, limited, denied, ambiguous, conflicted, expired, or unsupported
+without contacting the advertised endpoint.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -102,6 +107,7 @@ python streetmeshd.py --show-trust pi01@local@mesh
 python streetmeshd.py --list-name-bindings
 python streetmeshd.py --show-name-binding pi01@local@mesh
 python streetmeshd.py --list-name-conflicts
+python streetmeshd.py --preflight-service temperature
 ```
 
 ## Requirements
@@ -153,6 +159,7 @@ streetmesh/                    StreetMesh package
   inspection.py                Persisted-state CLI formatting
   protocol.py                  Knowledge Object creation and validation
   policy.py                    Review-mode claim decisions
+  preflight.py                 Read-only service access safety decisions
   quarantine.py                Quarantined claim persistence
   resolver.py                  Read-only name and service resolution
   routing.py                   Routing table placeholder
@@ -197,6 +204,8 @@ docs/
                                Public-key-ready identity and signing model
   milestone-19-name-ownership-conflict-handling.md
                                Local name ownership and conflict handling
+  milestone-20-service-access-preflight.md
+                               Service access safety gate without invocation
 ```
 
 ## Milestone 7 Acceptance Test
@@ -291,10 +300,17 @@ for persistent local and trusted bindings, conflict recording, resolver rules,
 inspection commands, and the future path toward cryptographically signed name
 ownership.
 
+## Milestone 20 Service Access Preflight
+
+See [service access preflight](docs/milestone-20-service-access-preflight.md)
+for conservative access decisions based on service resolution, provider trust,
+name bindings, conflicts, expiry, and protocol metadata. Preflight performs no
+network access and does not invoke services.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 19 adds stable local name
-ownership memory without treating remote HMACs as public proof or implementing
-homemade cryptography. Public-key
+StreetMesh v0.1 remains dependency-free. Milestone 20 adds a read-only service
+access safety gate without invoking endpoints or treating remote HMACs as
+public proof. Public-key
 cryptography, certificates, invite tokens, service adapters, service
 invocation, and a full administration UI are not implemented.
