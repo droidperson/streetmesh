@@ -11,6 +11,7 @@ from .config import StreetMeshConfig
 from .directory import AwarenessStore, NodeEntry, ServiceEntry
 from .identity import NodeIdentity, load_identity
 from .policy import ReviewPolicy
+from .resolver import NodeResolution, ServiceResolution
 from .trust import TrustEntry, TrustStore
 
 
@@ -157,8 +158,103 @@ def format_trust(entries: Iterable[TrustEntry]) -> str:
     )
 
 
+def format_node_resolution(result: NodeResolution) -> str:
+    values = [
+        ("resolution_status", result.resolution_status),
+        ("node_name", result.node_name),
+        ("node_id", result.node_id or "-"),
+        ("trust_state", result.trust_state or "-"),
+        ("signature_status", result.signature_status or "-"),
+        ("first_seen", _optional_number(result.first_seen)),
+        ("last_seen", _optional_number(result.last_seen)),
+        ("expires", _optional_number(result.expires)),
+        ("status", result.status or "-"),
+        ("candidate_count", str(len(result.candidates))),
+        ("reason", result.reason),
+    ]
+    output = _format_values(values)
+    if len(result.candidates) > 1:
+        rows = [
+            [
+                str(candidate.rank),
+                candidate.node_id,
+                candidate.trust_state,
+                candidate.signature_status,
+                candidate.status,
+                "yes" if candidate.usable else "no",
+            ]
+            for candidate in result.candidates
+        ]
+        output += "\n\ncandidates\n" + _format_table(
+            ["rank", "node_id", "trust_state", "signature_status", "status", "usable"],
+            rows,
+            empty_message="No candidates.",
+        )
+    return output
+
+
+def format_service_resolution(result: ServiceResolution) -> str:
+    values = [
+        ("resolution_status", result.resolution_status),
+        ("service_name", result.service_name),
+        ("provider_node_id", result.provider_node_id or "-"),
+        ("provider_node_name", result.provider_node_name or "-"),
+        ("endpoint", result.endpoint or "-"),
+        ("protocol", result.protocol or "-"),
+        ("trust_state", result.trust_state or "-"),
+        ("signature_status", result.signature_status or "-"),
+        ("expires", _optional_number(result.expires)),
+        ("status", result.status or "-"),
+        ("candidate_count", str(len(result.candidates))),
+        ("reason", result.reason),
+    ]
+    output = _format_values(values)
+    if len(result.candidates) > 1:
+        rows = [
+            [
+                str(candidate.rank),
+                candidate.provider_node_id,
+                candidate.provider_node_name or "-",
+                candidate.trust_state,
+                candidate.signature_status,
+                candidate.status,
+                "yes" if candidate.usable else "no",
+                "yes" if candidate.accepted_limited else "no",
+                candidate.endpoint or "-",
+                candidate.protocol or "-",
+            ]
+            for candidate in result.candidates
+        ]
+        output += "\n\ncandidates\n" + _format_table(
+            [
+                "rank",
+                "provider",
+                "provider_name",
+                "trust_state",
+                "signature_status",
+                "status",
+                "usable",
+                "limited",
+                "endpoint",
+                "protocol",
+            ],
+            rows,
+            empty_message="No candidates.",
+        )
+    return output
+
+
 def _expiry_status(expires: int, now: int) -> str:
     return "expired" if now > expires else "current"
+
+
+def _optional_number(value: int | None) -> str:
+    return str(value) if value is not None else "-"
+
+
+def _format_values(values: list[tuple[str, str]]) -> str:
+    width = max(len(label) for label, _value in values)
+    return "\n".join(f"{label:<{width}} : {value}" for label, value in values)
 
 
 def _format_table(

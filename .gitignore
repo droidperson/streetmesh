@@ -39,6 +39,8 @@ data-pi01/
 *.log
 m14-data/
 m15-data/
+m16-data/
+milestone-*-prompt.txt
 
 # StreetMesh runtime data
 data/
@@ -46,3 +48,4 @@ m13-data/
 m14-data/
 *.log
 m13-data/
+milestone-16-prompt.txt

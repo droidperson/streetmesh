@@ -13,11 +13,14 @@ from .daemon import StreetMeshDaemon
 from .identity import IdentityError
 from .inspection import (
     format_nodes,
+    format_node_resolution,
     format_services,
+    format_service_resolution,
     format_status,
     format_trust,
     load_inspection_state,
 )
+from .resolver import resolve_node, resolve_service
 from .trust import TrustStore, TrustStoreError
 
 
@@ -95,6 +98,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="list local trust entries and exit",
     )
     state_actions.add_argument(
+        "--resolve-node",
+        metavar="NODE_NAME",
+        help="resolve a persisted node name and exit",
+    )
+    state_actions.add_argument(
+        "--resolve-service",
+        metavar="SERVICE_NAME",
+        help="resolve and rank persisted service providers and exit",
+    )
+    state_actions.add_argument(
         "--trust-node",
         metavar="NODE_ID",
         help="mark a node ID trusted and exit",
@@ -139,6 +152,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.list_nodes
         or args.list_services
         or args.list_trust
+        or args.resolve_node
+        or args.resolve_service
         or args.trust_node
         or args.block_node
     ):
@@ -163,8 +178,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(format_status(state, config))
                 elif args.list_nodes:
                     print(format_nodes(state.awareness.list_nodes()))
-                else:
+                elif args.list_services:
                     print(format_services(state.awareness.list_services()))
+                elif args.resolve_node:
+                    print(
+                        format_node_resolution(
+                            resolve_node(state.awareness, args.resolve_node)
+                        )
+                    )
+                else:
+                    print(
+                        format_service_resolution(
+                            resolve_service(
+                                state.awareness,
+                                args.resolve_service,
+                            )
+                        )
+                    )
         except (IdentityError, TrustStoreError) as exc:
             parser.error(str(exc))
         return 0

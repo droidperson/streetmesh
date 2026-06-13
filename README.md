@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 15 Complete
+Milestone 16 Complete
 
 ### Implemented Features
 
@@ -24,6 +24,7 @@ Milestone 15 Complete
 * Formal three-node cross-platform mesh validation
 * HMAC-SHA256 signed Knowledge Objects
 * Signature-aware trust policy and inspection
+* Read-only node-name and service-provider resolution
 
 ### Validated Platforms
 
@@ -42,6 +43,7 @@ Milestone 15 Complete
 * Persistent per-node signing secrets
 * Signed local NODE and SERVICE claims
 * Persisted signature status for node and service awareness
+* Ranked resolution with ambiguity, expiry, and limited-trust reporting
 
 ## Vision
 
@@ -62,13 +64,15 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 15. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 16. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
 trust keeps unknown awareness visible without treating it as automatically
 trusted, while signature-aware policy distinguishes locally verified,
 remotely unverified, unsigned, invalid, and unsupported claims.
+Persisted awareness can now resolve node names and rank service providers while
+reporting limited trust, ambiguity, rejection, expiry, or missing results.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -77,6 +81,8 @@ python streetmeshd.py --status
 python streetmeshd.py --list-nodes
 python streetmeshd.py --list-services
 python streetmeshd.py --list-trust
+python streetmeshd.py --resolve-node pi01@local@mesh
+python streetmeshd.py --resolve-service temperature
 ```
 
 ## Requirements
@@ -127,6 +133,7 @@ streetmesh/                    StreetMesh package
   protocol.py                  Knowledge Object creation and validation
   policy.py                    Review-mode claim decisions
   quarantine.py                Quarantined claim persistence
+  resolver.py                  Read-only name and service resolution
   routing.py                   Routing table placeholder
   services.py                  Local service definitions and announcements
   storage.py                   Local state placeholder
@@ -161,6 +168,8 @@ docs/
                                HMAC signing design and limitations
   milestone-15-signature-aware-trust-policy.md
                                Signature status, policy, and inspection
+  milestone-16-name-service-resolution.md
+                               Node and service resolution and ranking
 ```
 
 ## Milestone 7 Acceptance Test
@@ -229,9 +238,15 @@ See the [signature-aware trust policy guide](docs/milestone-15-signature-aware-t
 for signature status meanings, interim HMAC verification behavior, policy and
 inspection integration, limitations, and the public-key evolution path.
 
+## Milestone 16 Name And Service Resolution
+
+See the [name and service resolution guide](docs/milestone-16-name-service-resolution.md)
+for read-only node lookup, provider ranking, ambiguity and expiry handling,
+CLI examples, and the future path toward service-access preflight.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 15 makes the interim HMAC
-model visible to trust policy without exchanging secrets. Public-key
-cryptography, certificates, invite tokens, service invocation, and a full
+StreetMesh v0.1 remains dependency-free. Milestone 16 resolves persisted names
+and service claims but does not invoke them. Public-key cryptography,
+certificates, invite tokens, service adapters, service invocation, and a full
 administration UI are not implemented.
