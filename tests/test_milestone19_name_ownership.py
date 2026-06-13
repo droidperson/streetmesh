@@ -308,6 +308,41 @@ class NameBindingCliTests(unittest.TestCase):
         self.assertIn(NODE_B, conflict_output)
         self.assertIn("claimant_node_id", conflict_output)
 
+    def test_inspection_derives_active_conflict_from_persisted_awareness(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            awareness = AwarenessStore(path=data_dir / "awareness.json")
+            _add_node(awareness, NODE_A, NODE_NAME, now=None)
+            _add_node(awareness, NODE_B, NODE_NAME, now=None)
+            awareness.save()
+            registry = NameBindingRegistry(data_dir / "name_bindings.json")
+            registry.bind(NODE_NAME, NODE_A)
+            trust = TrustStore.load(data_dir / "trust.json")
+            trust.bind_name(NODE_A, NODE_NAME, "trusted")
+
+            self.assertEqual(registry.list_conflicts(), [])
+            list_code, list_output = _run_cli(
+                ["--data-dir", str(data_dir), "--list-name-conflicts"]
+            )
+            show_code, show_output = _run_cli(
+                ["--data-dir", str(data_dir), "--show-name-binding", NODE_NAME]
+            )
+            resolve_code, resolve_output = _run_cli(
+                ["--data-dir", str(data_dir), "--resolve-node", NODE_NAME]
+            )
+
+        self.assertEqual((list_code, show_code, resolve_code), (0, 0, 0))
+        self.assertIn(NODE_NAME, list_output)
+        self.assertIn(NODE_A, list_output)
+        self.assertIn(NODE_B, list_output)
+        self.assertIn("active-name-claim-conflicts-with-binding", list_output)
+        self.assertIn("conflict_count : 1", show_output)
+        self.assertIn("resolution_status", resolve_output)
+        self.assertIn("resolved", resolve_output)
+        self.assertIn("conflicting claimants are present", resolve_output)
+        self.assertIn("name_conflict", resolve_output)
+        self.assertIn("no", resolve_output)
+
 
 def _add_node(
     store: AwarenessStore,

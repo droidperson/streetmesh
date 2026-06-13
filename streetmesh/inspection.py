@@ -23,6 +23,44 @@ class InspectionState:
     trust: TrustStore
     name_bindings: NameBindingRegistry = field(default_factory=NameBindingRegistry)
 
+    def list_name_conflicts(self, *, now: int | None = None) -> list[NameConflict]:
+        """Return recorded conflicts plus active claimants from awareness."""
+
+        current_time = int(time.time() if now is None else now)
+        conflicts = {
+            (entry.node_name, entry.claimant_node_id): entry
+            for entry in self.name_bindings.list_conflicts()
+        }
+        for node in self.awareness.list_nodes():
+            binding = self.name_bindings.get(node.node_name)
+            if (
+                binding is None
+                or binding.node_id == node.node_id
+                or node.expires < current_time
+            ):
+                continue
+            key = (node.node_name, node.node_id)
+            recorded = conflicts.get(key)
+            conflicts[key] = NameConflict(
+                node_name=node.node_name,
+                bound_node_id=binding.node_id,
+                claimant_node_id=node.node_id,
+                claimant_fingerprint=node.fingerprint,
+                claimant_public_key_id=node.public_key_id,
+                first_seen=(
+                    recorded.first_seen if recorded is not None else node.first_seen
+                ),
+                last_seen=max(
+                    node.last_seen,
+                    recorded.last_seen if recorded is not None else 0,
+                ),
+                reason="active-name-claim-conflicts-with-binding",
+            )
+        return sorted(
+            conflicts.values(),
+            key=lambda entry: (entry.node_name, entry.claimant_node_id),
+        )
+
 
 def load_inspection_state(data_dir: Path) -> InspectionState:
     """Load persisted local state without creating an identity or daemon."""

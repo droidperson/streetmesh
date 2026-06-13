@@ -294,14 +294,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     format_name_binding_detail(
                         binding,
                         state.trust,
-                        state.name_bindings.list_conflicts(),
+                        state.list_name_conflicts(),
                     )
                 )
             elif args.list_name_conflicts:
                 state = load_inspection_state(config.node.data_dir)
                 print(
                     format_name_conflicts(
-                        state.name_bindings.list_conflicts(),
+                        state.list_name_conflicts(),
                         state.trust,
                     )
                 )
