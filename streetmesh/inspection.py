@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import time
 from typing import Iterable
@@ -10,6 +10,7 @@ from typing import Iterable
 from .config import StreetMeshConfig
 from .directory import AwarenessStore, NodeEntry, ServiceEntry
 from .identity import NodeIdentity, load_identity
+from .name_bindings import NameBinding, NameBindingRegistry, NameConflict
 from .policy import ReviewPolicy
 from .resolver import NodeResolution, ServiceResolution
 from .trust import TrustEntry, TrustStore
@@ -20,6 +21,7 @@ class InspectionState:
     identity: NodeIdentity | None
     awareness: AwarenessStore
     trust: TrustStore
+    name_bindings: NameBindingRegistry = field(default_factory=NameBindingRegistry)
 
 
 def load_inspection_state(data_dir: Path) -> InspectionState:
@@ -36,6 +38,30 @@ def load_inspection_state(data_dir: Path) -> InspectionState:
         data_dir / "trust.json",
         create_if_missing=False,
     )
+    name_bindings = NameBindingRegistry.load(data_dir / "name_bindings.json")
+    if identity is not None and name_bindings.get(identity.node_name) is None:
+        name_bindings.bind_local(
+            identity.node_name,
+            identity.node_id,
+            fingerprint=identity.fingerprint,
+            public_key_id=identity.public_key_id,
+            save=False,
+        )
+    for entry in trust.list_entries():
+        if (
+            entry.node_name is not None
+            and entry.binding_status == "bound"
+            and name_bindings.get(entry.node_name) is None
+        ):
+            name_bindings.bind(
+                entry.node_name,
+                entry.node_id,
+                fingerprint=entry.fingerprint,
+                public_key_id=entry.public_key_id,
+                source="trusted" if entry.state == "trusted" else "manual",
+                notes="legacy trust binding",
+                save=False,
+            )
     explicit_trust = {
         entry.node_id: entry.state for entry in trust.list_entries()
     }
@@ -46,10 +72,15 @@ def load_inspection_state(data_dir: Path) -> InspectionState:
         elif node.node_id in explicit_trust:
             node.trust_state = explicit_trust[node.node_id]
         if node.node_id != local_node_id:
-            node.binding_status = trust.binding_status_for_claim(
-                node.node_id,
+            node.binding_status = name_bindings.status_for_claim(
                 node.node_name,
+                node.node_id,
             )
+            if node.binding_status in {"unknown", "unbound"}:
+                node.binding_status = trust.binding_status_for_claim(
+                    node.node_id,
+                    node.node_name,
+                )
     for service in awareness.list_services():
         if service.provider in explicit_trust:
             service.trust_state = explicit_trust[service.provider]
@@ -73,6 +104,7 @@ def load_inspection_state(data_dir: Path) -> InspectionState:
         identity=identity,
         awareness=awareness,
         trust=trust,
+        name_bindings=name_bindings,
     )
 
 
@@ -97,6 +129,8 @@ def format_status(state: InspectionState, config: StreetMeshConfig) -> str:
         ("known nodes", str(len(state.awareness.list_nodes()))),
         ("known services", str(len(state.awareness.list_services()))),
         ("trust entries", str(len(state.trust.list_entries()))),
+        ("name bindings", str(len(state.name_bindings.list_bindings()))),
+        ("name conflicts", str(len(state.name_bindings.list_conflicts()))),
     ]
     width = max(len(label) for label, _value in values)
     return "\n".join(f"{label:<{width}} : {value}" for label, value in values)
@@ -246,6 +280,101 @@ def format_trust_change(
             ("first_trusted", _optional_number(entry.first_trusted)),
             ("last_confirmed", _optional_number(entry.last_confirmed)),
         ]
+    )
+
+
+def format_name_bindings(
+    bindings: Iterable[NameBinding],
+    trust: TrustStore,
+) -> str:
+    rows = [
+        [
+            entry.node_name,
+            entry.node_id,
+            entry.fingerprint or "-",
+            entry.public_key_id or "-",
+            entry.binding_state,
+            trust.get_state(entry.node_id),
+            str(entry.first_bound),
+            str(entry.last_confirmed),
+            entry.source,
+        ]
+        for entry in bindings
+    ]
+    return _format_table(
+        [
+            "node_name",
+            "node_id",
+            "fingerprint",
+            "public_key_id",
+            "binding_state",
+            "trust_state",
+            "first_bound",
+            "last_confirmed",
+            "source",
+        ],
+        rows,
+        empty_message="No name bindings.",
+    )
+
+
+def format_name_binding_detail(
+    binding: NameBinding,
+    trust: TrustStore,
+    conflicts: Iterable[NameConflict] = (),
+) -> str:
+    matching_conflicts = [
+        conflict for conflict in conflicts if conflict.node_name == binding.node_name
+    ]
+    return _format_values(
+        [
+            ("node_name", binding.node_name),
+            ("node_id", binding.node_id),
+            ("fingerprint", binding.fingerprint or "-"),
+            ("public_key_id", binding.public_key_id or "-"),
+            ("binding_state", binding.binding_state),
+            ("trust_state", trust.get_state(binding.node_id)),
+            ("first_bound", str(binding.first_bound)),
+            ("last_confirmed", str(binding.last_confirmed)),
+            ("source", binding.source),
+            ("notes", binding.notes or "-"),
+            ("conflict_count", str(len(matching_conflicts))),
+        ]
+    )
+
+
+def format_name_conflicts(
+    conflicts: Iterable[NameConflict],
+    trust: TrustStore,
+) -> str:
+    rows = [
+        [
+            conflict.node_name,
+            conflict.bound_node_id,
+            conflict.claimant_node_id,
+            conflict.claimant_fingerprint or "-",
+            conflict.claimant_public_key_id or "-",
+            trust.get_state(conflict.claimant_node_id),
+            str(conflict.first_seen),
+            str(conflict.last_seen),
+            conflict.reason,
+        ]
+        for conflict in conflicts
+    ]
+    return _format_table(
+        [
+            "node_name",
+            "bound_node_id",
+            "claimant_node_id",
+            "fingerprint",
+            "public_key_id",
+            "claimant_trust",
+            "first_seen",
+            "last_seen",
+            "reason",
+        ],
+        rows,
+        empty_message="No name conflicts.",
     )
 
 

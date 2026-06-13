@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 18 Complete
+Milestone 19 Complete
 
 ### Implemented Features
 
@@ -27,6 +27,7 @@ Milestone 18 Complete
 * Read-only node-name and service-provider resolution
 * Trust promotion and stable node-name binding
 * Public-key-ready identity metadata and signer/verifier abstraction
+* Persistent local name ownership and conflict handling
 
 ### Validated Platforms
 
@@ -48,6 +49,7 @@ Milestone 18 Complete
 * Ranked resolution with ambiguity, expiry, and limited-trust reporting
 * Trusted-name conflict detection and continuity protection
 * Safe public identity awareness without secret or private-key disclosure
+* Conflict-aware node and service-provider resolution
 
 ## Vision
 
@@ -68,7 +70,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 18. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 19. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -82,6 +84,8 @@ ID so conflicting claims remain visible without replacing user intent.
 Identity version 2 adds safe public-key metadata and pluggable signing and
 verification interfaces while HMAC-SHA256 remains the only active algorithm.
 No public-key signature is generated or accepted as verified yet.
+Persistent local name bindings now prevent a newer node ID from silently
+replacing an established local or trusted identity.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -95,6 +99,9 @@ python streetmeshd.py --resolve-service temperature
 python streetmeshd.py --trust-node-name pi01@local@mesh
 python streetmeshd.py --block-node-name pi01@local@mesh
 python streetmeshd.py --show-trust pi01@local@mesh
+python streetmeshd.py --list-name-bindings
+python streetmeshd.py --show-name-binding pi01@local@mesh
+python streetmeshd.py --list-name-conflicts
 ```
 
 ## Requirements
@@ -141,6 +148,7 @@ streetmesh/                    StreetMesh package
   directory.py                 Awareness Store for nodes and services
   gossip.py                    Gossip forwarding policy
   identity.py                  Node identity loading and creation
+  name_bindings.py             Persistent name ownership and conflicts
   signing.py                   Signer and verifier abstractions
   inspection.py                Persisted-state CLI formatting
   protocol.py                  Knowledge Object creation and validation
@@ -187,6 +195,8 @@ docs/
                                Trust-by-name workflow and conflict handling
   milestone-18-public-key-identity-model.md
                                Public-key-ready identity and signing model
+  milestone-19-name-ownership-conflict-handling.md
+                               Local name ownership and conflict handling
 ```
 
 ## Milestone 7 Acceptance Test
@@ -274,10 +284,17 @@ for identity version 2, signer and verifier extension points, safe NODE identity
 metadata, HMAC compatibility, and the planned migration to real public-key
 signatures.
 
+## Milestone 19 Name Ownership And Conflict Handling
+
+See [name ownership and conflict handling](docs/milestone-19-name-ownership-conflict-handling.md)
+for persistent local and trusted bindings, conflict recording, resolver rules,
+inspection commands, and the future path toward cryptographically signed name
+ownership.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 18 prepares identities and
-signature handling for a reviewed public-key backend without treating remote
-HMACs as public proof or implementing homemade cryptography. Public-key
+StreetMesh v0.1 remains dependency-free. Milestone 19 adds stable local name
+ownership memory without treating remote HMACs as public proof or implementing
+homemade cryptography. Public-key
 cryptography, certificates, invite tokens, service adapters, service
 invocation, and a full administration UI are not implemented.

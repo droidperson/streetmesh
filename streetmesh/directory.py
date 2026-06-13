@@ -238,7 +238,7 @@ class AwarenessStore:
         self.local_node_id = local_node_id
         self.path = path
         self._nodes_by_id: dict[str, NodeEntry] = {}
-        self._node_names: dict[str, str] = {}
+        self._node_names: dict[str, set[str]] = {}
         self._services: dict[tuple[str, str], ServiceEntry] = {}
 
     def add_local_node(
@@ -331,8 +331,8 @@ class AwarenessStore:
             existing.public_key_status = public_key_status
             existing.binding_status = binding_status
             if old_name != node_name:
-                self._node_names.pop(old_name, None)
-            self._node_names[node_name] = node_id
+                self._remove_name_index(old_name, node_id)
+            self._add_name_index(node_name, node_id)
             self._set_service_provider_identity(
                 node_id,
                 node_name,
@@ -381,9 +381,10 @@ class AwarenessStore:
         return self._nodes_by_id.get(node_id)
 
     def get_by_node_name(self, node_name: str) -> NodeEntry | None:
-        node_id = self._node_names.get(node_name)
-        if node_id is None:
+        node_ids = self._node_names.get(node_name, set())
+        if len(node_ids) != 1:
             return None
+        node_id = next(iter(node_ids))
         return self._nodes_by_id.get(node_id)
 
     def list_nodes(self, *, now: int | None = None) -> list[NodeEntry]:
@@ -428,7 +429,7 @@ class AwarenessStore:
             if current_time > entry.expires:
                 expired.append(entry)
                 self._nodes_by_id.pop(entry.node_id, None)
-                self._node_names.pop(entry.node_name, None)
+                self._remove_name_index(entry.node_name, entry.node_id)
                 LOGGER.info(
                     "NODE_EXPIRED node_name=%s node_id=%s expires=%s",
                     entry.node_name,
@@ -512,14 +513,25 @@ class AwarenessStore:
     def _store_entry(self, entry: NodeEntry) -> None:
         existing = self._nodes_by_id.get(entry.node_id)
         if existing is not None and existing.node_name != entry.node_name:
-            self._node_names.pop(existing.node_name, None)
+            self._remove_name_index(existing.node_name, entry.node_id)
         self._nodes_by_id[entry.node_id] = entry
-        self._node_names[entry.node_name] = entry.node_id
+        self._add_name_index(entry.node_name, entry.node_id)
         self._set_service_provider_identity(
             entry.node_id,
             entry.node_name,
             entry.binding_status,
         )
+
+    def _add_name_index(self, node_name: str, node_id: str) -> None:
+        self._node_names.setdefault(node_name, set()).add(node_id)
+
+    def _remove_name_index(self, node_name: str, node_id: str) -> None:
+        node_ids = self._node_names.get(node_name)
+        if node_ids is None:
+            return
+        node_ids.discard(node_id)
+        if not node_ids:
+            self._node_names.pop(node_name, None)
 
     def _set_service_provider_identity(
         self,

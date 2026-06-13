@@ -11,7 +11,11 @@ from . import __version__
 from .config import ConfigError, load_config
 from .daemon import StreetMeshDaemon
 from .identity import IdentityError
+from .name_bindings import NameBindingError
 from .inspection import (
+    format_name_binding_detail,
+    format_name_bindings,
+    format_name_conflicts,
     format_nodes,
     format_node_resolution,
     format_services,
@@ -134,6 +138,21 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NODE_NAME_OR_ID",
         help="show one persisted trust binding and exit",
     )
+    state_actions.add_argument(
+        "--list-name-bindings",
+        action="store_true",
+        help="list persistent local node-name bindings and exit",
+    )
+    state_actions.add_argument(
+        "--show-name-binding",
+        metavar="NAME",
+        help="show one persistent node-name binding and exit",
+    )
+    state_actions.add_argument(
+        "--list-name-conflicts",
+        action="store_true",
+        help="list observed claims that conflict with bound names and exit",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -176,6 +195,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.trust_node_name
         or args.block_node_name
         or args.show_trust
+        or args.list_name_bindings
+        or args.show_name_binding
+        or args.list_name_conflicts
     ):
         try:
             if args.trust_node:
@@ -189,7 +211,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             elif args.trust_node_name or args.block_node_name:
                 node_name = args.trust_node_name or args.block_node_name
                 state = load_inspection_state(config.node.data_dir)
-                result = resolve_node(state.awareness, node_name)
+                result = resolve_node(
+                    state.awareness,
+                    node_name,
+                    name_bindings=state.name_bindings,
+                )
                 if result.resolution_status != "resolved" or result.chosen is None:
                     action = "Trust" if args.trust_node_name else "Block"
                     print(
@@ -203,6 +229,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 previous_state = trust_store.get_state(result.node_id)
                 new_state = "trusted" if args.trust_node_name else "blocked"
+                state.name_bindings.bind(
+                    node_name,
+                    result.node_id,
+                    fingerprint=result.fingerprint,
+                    public_key_id=result.public_key_id,
+                    source="trusted" if args.trust_node_name else "manual",
+                    notes=(
+                        "trusted by resolved name"
+                        if args.trust_node_name
+                        else "blocked by resolved name"
+                    ),
+                    save=False,
+                )
                 entry = trust_store.bind_name(
                     result.node_id,
                     node_name,
@@ -210,6 +249,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     fingerprint=result.fingerprint,
                     public_key_id=result.public_key_id,
                 )
+                state.name_bindings.save()
                 print(
                     format_trust_change(
                         entry,
@@ -236,6 +276,35 @@ def main(argv: Sequence[str] | None = None) -> int:
                     create_if_missing=False,
                 )
                 print(format_trust(trust_store.list_entries()))
+            elif args.list_name_bindings:
+                state = load_inspection_state(config.node.data_dir)
+                print(
+                    format_name_bindings(
+                        state.name_bindings.list_bindings(),
+                        state.trust,
+                    )
+                )
+            elif args.show_name_binding:
+                state = load_inspection_state(config.node.data_dir)
+                binding = state.name_bindings.get(args.show_name_binding)
+                if binding is None:
+                    print(f"Name binding not found: {args.show_name_binding}")
+                    return 1
+                print(
+                    format_name_binding_detail(
+                        binding,
+                        state.trust,
+                        state.name_bindings.list_conflicts(),
+                    )
+                )
+            elif args.list_name_conflicts:
+                state = load_inspection_state(config.node.data_dir)
+                print(
+                    format_name_conflicts(
+                        state.name_bindings.list_conflicts(),
+                        state.trust,
+                    )
+                )
             else:
                 state = load_inspection_state(config.node.data_dir)
                 if args.status:
@@ -247,7 +316,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 elif args.resolve_node:
                     print(
                         format_node_resolution(
-                            resolve_node(state.awareness, args.resolve_node)
+                            resolve_node(
+                                state.awareness,
+                                args.resolve_node,
+                                name_bindings=state.name_bindings,
+                            )
                         )
                     )
                 else:
@@ -259,7 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             )
                         )
                     )
-        except (IdentityError, TrustStoreError) as exc:
+        except (IdentityError, NameBindingError, TrustStoreError) as exc:
             parser.error(str(exc))
         return 0
 

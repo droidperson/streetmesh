@@ -10,6 +10,7 @@ from .config import StreetMeshConfig
 from .directory import AwarenessStore, DuplicateCache
 from .gossip import GossipForwarder
 from .identity import IdentityError, NodeIdentity, load_or_create_identity
+from .name_bindings import NameBindingError, NameBindingRegistry
 from .policy import ReviewPolicy
 from .protocol import (
     KnowledgeObjectError,
@@ -76,6 +77,33 @@ class StreetMeshDaemon:
         except TrustStoreError as exc:
             print(f"Trust store error: {exc}")
             return 1
+        try:
+            name_bindings = NameBindingRegistry.load(
+                self.config.node.data_dir / "name_bindings.json"
+            )
+            for entry in trust_store.list_entries():
+                if entry.node_name is None or entry.binding_status != "bound":
+                    continue
+                name_bindings.bind(
+                    entry.node_name,
+                    entry.node_id,
+                    fingerprint=entry.fingerprint,
+                    public_key_id=entry.public_key_id,
+                    source="trusted" if entry.state == "trusted" else "manual",
+                    notes="migrated from trust store",
+                    save=False,
+                )
+            name_bindings.bind_local(
+                identity.node_name,
+                identity.node_id,
+                fingerprint=identity.fingerprint,
+                public_key_id=identity.public_key_id,
+                save=False,
+            )
+            name_bindings.save()
+        except NameBindingError as exc:
+            print(f"Name binding error: {exc}")
+            return 1
         policy = ReviewPolicy()
         quarantine = QuarantineStore.load(
             self.config.node.data_dir / "quarantine.json"
@@ -128,6 +156,7 @@ class StreetMeshDaemon:
                 transport,
                 gossip,
                 trust_store,
+                name_bindings,
                 policy,
                 quarantine,
             )
@@ -211,6 +240,7 @@ class StreetMeshDaemon:
         *,
         gossip: GossipForwarder | None = None,
         trust_store: TrustStore | None = None,
+        name_bindings: NameBindingRegistry | None = None,
         policy: ReviewPolicy | None = None,
         quarantine: QuarantineStore | None = None,
         local_signing_secret: str | None = None,
@@ -244,15 +274,34 @@ class StreetMeshDaemon:
         if knowledge_object.get("type") == "NODE":
             payload = knowledge_object.get("payload")
             node_name = payload.get("node_name") if isinstance(payload, dict) else None
-            binding_status = active_trust_store.binding_status_for_claim(
-                knowledge_object.get("origin"),
-                node_name,
-            )
-            if binding_status == "name_conflict":
-                LOGGER.warning(
-                    "Trusted name conflict: node_name=%s claimant_node_id=%s ko_id=%s",
+            origin = knowledge_object.get("origin")
+            if name_bindings is not None:
+                binding_status = name_bindings.observe_claim(
                     node_name,
-                    knowledge_object.get("origin"),
+                    origin,
+                    fingerprint=(
+                        payload.get("fingerprint") if isinstance(payload, dict) else None
+                    ),
+                    public_key_id=(
+                        payload.get("public_key_id") if isinstance(payload, dict) else None
+                    ),
+                )
+            if binding_status in {"unknown", "unbound"}:
+                binding_status = active_trust_store.binding_status_for_claim(
+                    origin,
+                    node_name,
+                )
+            if binding_status == "name_conflict":
+                message = (
+                    "Name binding conflict"
+                    if name_bindings is not None
+                    else "Trusted name conflict"
+                )
+                LOGGER.warning(
+                    "%s: node_name=%s claimant_node_id=%s ko_id=%s",
+                    message,
+                    node_name,
+                    origin,
                     knowledge_object.get("ko_id"),
                 )
         elif knowledge_object.get("type") == "SERVICE":
@@ -353,6 +402,7 @@ class StreetMeshDaemon:
         transport: AnnouncementTransport,
         gossip: GossipForwarder,
         trust_store: TrustStore,
+        name_bindings: NameBindingRegistry,
         policy: ReviewPolicy,
         quarantine: QuarantineStore,
     ) -> None:
@@ -415,6 +465,7 @@ class StreetMeshDaemon:
                 transport,
                 gossip=gossip,
                 trust_store=trust_store,
+                name_bindings=name_bindings,
                 policy=policy,
                 quarantine=quarantine,
                 local_signing_secret=identity.signing_secret,

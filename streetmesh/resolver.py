@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import time
 from typing import Literal
 
 from .directory import AwarenessStore, NodeEntry, ServiceEntry
+from .name_bindings import NameBindingRegistry
 from .protocol import SignatureStatus
 from .trust import BindingStatus, TrustState
 
@@ -185,6 +186,7 @@ def resolve_node(
     node_name: str,
     *,
     now: int | None = None,
+    name_bindings: NameBindingRegistry | None = None,
 ) -> NodeResolution:
     """Resolve a node name without mutating awareness."""
 
@@ -192,6 +194,18 @@ def resolve_node(
     matches = [
         entry for entry in awareness.list_nodes() if entry.node_name == node_name
     ]
+    binding = name_bindings.get(node_name) if name_bindings is not None else None
+    if name_bindings is not None:
+        matches = [
+            replace(
+                entry,
+                binding_status=name_bindings.status_for_claim(
+                    entry.node_name,
+                    entry.node_id,
+                ),
+            )
+            for entry in matches
+        ]
     ranked = _rank_nodes(matches, current_time)
     if not ranked:
         return NodeResolution(
@@ -200,6 +214,64 @@ def resolve_node(
             None,
             (),
             "No awareness entry matches this node name.",
+        )
+
+    bound_current = [
+        candidate
+        for candidate in ranked
+        if candidate.binding_status == "bound"
+        and candidate.usable
+        and candidate.status == "current"
+    ]
+    conflicting = [
+        candidate
+        for candidate in ranked
+        if candidate.binding_status == "name_conflict"
+    ]
+    if bound_current:
+        return NodeResolution(
+            "resolved",
+            node_name,
+            bound_current[0],
+            tuple(ranked),
+            (
+                "The current bound identity is preferred; conflicting claimants are present."
+                if conflicting
+                else "The current bound identity owns this local name binding."
+            ),
+        )
+    if binding is not None and any(
+        candidate.node_id != binding.node_id for candidate in ranked
+    ):
+        bound_candidate = next(
+            (
+                candidate
+                for candidate in ranked
+                if candidate.node_id == binding.node_id
+            ),
+            None,
+        )
+        return NodeResolution(
+            "conflict",
+            node_name,
+            bound_candidate or ranked[0],
+            tuple(ranked),
+            "The name is bound to a different identity that is not currently available.",
+        )
+
+    unbound_current = [
+        candidate
+        for candidate in ranked
+        if candidate.status == "current"
+        and candidate.binding_status in {"unbound", "unknown"}
+    ]
+    if binding is None and len(unbound_current) > 1:
+        return NodeResolution(
+            "conflict",
+            node_name,
+            unbound_current[0],
+            tuple(ranked),
+            "Multiple current unbound node IDs claim this node name.",
         )
 
     usable_current = [
