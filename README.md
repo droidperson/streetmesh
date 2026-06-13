@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 16 Complete
+Milestone 17 Complete
 
 ### Implemented Features
 
@@ -25,6 +25,7 @@ Milestone 16 Complete
 * HMAC-SHA256 signed Knowledge Objects
 * Signature-aware trust policy and inspection
 * Read-only node-name and service-provider resolution
+* Trust promotion and stable node-name binding
 
 ### Validated Platforms
 
@@ -44,6 +45,7 @@ Milestone 16 Complete
 * Signed local NODE and SERVICE claims
 * Persisted signature status for node and service awareness
 * Ranked resolution with ambiguity, expiry, and limited-trust reporting
+* Trusted-name conflict detection and continuity protection
 
 ## Vision
 
@@ -64,7 +66,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 16. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 17. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -73,6 +75,8 @@ trusted, while signature-aware policy distinguishes locally verified,
 remotely unverified, unsigned, invalid, and unsupported claims.
 Persisted awareness can now resolve node names and rank service providers while
 reporting limited trust, ambiguity, rejection, expiry, or missing results.
+Users can now trust or block a resolved node name, binding it to a stable node
+ID so conflicting claims remain visible without replacing user intent.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -83,6 +87,9 @@ python streetmeshd.py --list-services
 python streetmeshd.py --list-trust
 python streetmeshd.py --resolve-node pi01@local@mesh
 python streetmeshd.py --resolve-service temperature
+python streetmeshd.py --trust-node-name pi01@local@mesh
+python streetmeshd.py --block-node-name pi01@local@mesh
+python streetmeshd.py --show-trust pi01@local@mesh
 ```
 
 ## Requirements
@@ -170,6 +177,8 @@ docs/
                                Signature status, policy, and inspection
   milestone-16-name-service-resolution.md
                                Node and service resolution and ranking
+  milestone-17-trust-promotion-name-binding.md
+                               Trust-by-name workflow and conflict handling
 ```
 
 ## Milestone 7 Acceptance Test
@@ -244,9 +253,15 @@ See the [name and service resolution guide](docs/milestone-16-name-service-resol
 for read-only node lookup, provider ranking, ambiguity and expiry handling,
 CLI examples, and the future path toward service-access preflight.
 
+## Milestone 17 Trust Promotion And Name Binding
+
+See the [trust promotion and name binding guide](docs/milestone-17-trust-promotion-name-binding.md)
+for trusting and blocking resolved node names, enriched trust records, binding
+conflict behavior, and the relationship between user trust and signature state.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 16 resolves persisted names
-and service claims but does not invoke them. Public-key cryptography,
-certificates, invite tokens, service adapters, service invocation, and a full
-administration UI are not implemented.
+StreetMesh v0.1 remains dependency-free. Milestone 17 adds explicit local
+trust-by-name without treating remote HMACs as public proof. Public-key
+cryptography, certificates, invite tokens, service adapters, service
+invocation, and a full administration UI are not implemented.

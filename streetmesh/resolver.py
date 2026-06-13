@@ -8,7 +8,7 @@ from typing import Literal
 
 from .directory import AwarenessStore, NodeEntry, ServiceEntry
 from .protocol import SignatureStatus
-from .trust import TrustState
+from .trust import BindingStatus, TrustState
 
 
 Currentness = Literal["current", "expired"]
@@ -49,6 +49,8 @@ class NodeCandidate:
     node_id: str
     trust_state: TrustState
     signature_status: SignatureStatus
+    fingerprint: str | None
+    binding_status: BindingStatus
     first_seen: int
     last_seen: int
     expires: int
@@ -78,6 +80,14 @@ class NodeResolution:
         return self.chosen.signature_status if self.chosen is not None else None
 
     @property
+    def fingerprint(self) -> str | None:
+        return self.chosen.fingerprint if self.chosen is not None else None
+
+    @property
+    def binding_status(self) -> BindingStatus | None:
+        return self.chosen.binding_status if self.chosen is not None else None
+
+    @property
     def first_seen(self) -> int | None:
         return self.chosen.first_seen if self.chosen is not None else None
 
@@ -103,6 +113,7 @@ class ServiceCandidate:
     protocol: str | None
     trust_state: TrustState
     signature_status: SignatureStatus
+    binding_status: BindingStatus
     accepted_limited: bool
     first_seen: int
     last_seen: int
@@ -147,6 +158,10 @@ class ServiceResolution:
     @property
     def signature_status(self) -> SignatureStatus | None:
         return self.chosen.signature_status if self.chosen is not None else None
+
+    @property
+    def binding_status(self) -> BindingStatus | None:
+        return self.chosen.binding_status if self.chosen is not None else None
 
     @property
     def expires(self) -> int | None:
@@ -301,11 +316,17 @@ def _rank_nodes(entries: list[NodeEntry], now: int) -> list[NodeCandidate]:
             node_id=entry.node_id,
             trust_state=entry.trust_state,
             signature_status=entry.signature_status,
+            fingerprint=entry.fingerprint,
+            binding_status=entry.binding_status,
             first_seen=entry.first_seen,
             last_seen=entry.last_seen,
             expires=entry.expires,
             status=_currentness(entry.expires, now),
-            usable=_is_usable(entry.trust_state, entry.signature_status),
+            usable=_is_usable(
+                entry.trust_state,
+                entry.signature_status,
+                entry.binding_status,
+            ),
             rank=index,
         )
         for index, entry in enumerate(ordered, start=1)
@@ -326,12 +347,17 @@ def _rank_services(
             protocol=entry.protocol,
             trust_state=entry.trust_state,
             signature_status=entry.signature_status,
+            binding_status=entry.binding_status,
             accepted_limited=entry.accepted_limited,
             first_seen=entry.first_seen,
             last_seen=entry.last_seen,
             expires=entry.expires,
             status=_currentness(entry.expires, now),
-            usable=_is_usable(entry.trust_state, entry.signature_status),
+            usable=_is_usable(
+                entry.trust_state,
+                entry.signature_status,
+                entry.binding_status,
+            ),
             rank=index,
         )
         for index, entry in enumerate(ordered, start=1)
@@ -341,9 +367,16 @@ def _rank_services(
 def _node_sort_key(entry: NodeEntry, now: int) -> tuple[object, ...]:
     return (
         -int(entry.expires >= now),
-        -int(_is_usable(entry.trust_state, entry.signature_status)),
+        -int(
+            _is_usable(
+                entry.trust_state,
+                entry.signature_status,
+                entry.binding_status,
+            )
+        ),
         -_TRUST_RANK[entry.trust_state],
         -_SIGNATURE_RANK[entry.signature_status],
+        -_binding_rank(entry.binding_status),
         -entry.last_seen,
         -entry.expires,
         entry.node_id,
@@ -353,9 +386,16 @@ def _node_sort_key(entry: NodeEntry, now: int) -> tuple[object, ...]:
 def _service_sort_key(entry: ServiceEntry, now: int) -> tuple[object, ...]:
     return (
         -int(entry.expires >= now),
-        -int(_is_usable(entry.trust_state, entry.signature_status)),
+        -int(
+            _is_usable(
+                entry.trust_state,
+                entry.signature_status,
+                entry.binding_status,
+            )
+        ),
         -_TRUST_RANK[entry.trust_state],
         -_SIGNATURE_RANK[entry.signature_status],
+        -_binding_rank(entry.binding_status),
         -entry.last_seen,
         -entry.expires,
         entry.provider,
@@ -369,11 +409,23 @@ def _currentness(expires: int, now: int) -> Currentness:
 def _is_usable(
     trust_state: TrustState,
     signature_status: SignatureStatus,
+    binding_status: BindingStatus,
 ) -> bool:
     return (
         trust_state not in _REJECTED_TRUST
         and signature_status != "signature_invalid"
+        and binding_status not in {"name_conflict", "stale_binding"}
     )
+
+
+def _binding_rank(binding_status: BindingStatus) -> int:
+    return {
+        "bound": 4,
+        "unbound": 3,
+        "unknown": 2,
+        "stale_binding": 1,
+        "name_conflict": 0,
+    }[binding_status]
 
 
 def _epoch(value: int | None) -> int:

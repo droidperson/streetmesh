@@ -10,7 +10,7 @@ import time
 from typing import Any, Literal
 
 from .protocol import SIGNATURE_STATUSES, SignatureStatus
-from .trust import TRUST_STATES, TrustState
+from .trust import BINDING_STATUSES, BindingStatus, TRUST_STATES, TrustState
 
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +35,8 @@ class NodeEntry:
     seq: int
     trust_state: TrustState = "unknown"
     signature_status: SignatureStatus = "signature_not_checked"
+    fingerprint: str | None = None
+    binding_status: BindingStatus = "unknown"
 
     @classmethod
     def from_json(cls, value: object) -> "NodeEntry | None":
@@ -54,6 +56,8 @@ class NodeEntry:
                 "signature_status",
                 "signature_not_checked",
             )
+            fingerprint = value.get("fingerprint")
+            binding_status = value.get("binding_status", "unknown")
         except KeyError:
             return None
 
@@ -78,6 +82,13 @@ class NodeEntry:
             or signature_status not in SIGNATURE_STATUSES
         ):
             return None
+        if fingerprint is not None and not isinstance(fingerprint, str):
+            return None
+        if (
+            not isinstance(binding_status, str)
+            or binding_status not in BINDING_STATUSES
+        ):
+            return None
 
         return cls(
             node_id=node_id,
@@ -89,6 +100,8 @@ class NodeEntry:
             seq=seq,
             trust_state=trust_state,
             signature_status=signature_status,
+            fingerprint=fingerprint,
+            binding_status=binding_status,
         )
 
 
@@ -109,6 +122,7 @@ class ServiceEntry:
     trust_state: TrustState = "unknown"
     accepted_limited: bool = False
     signature_status: SignatureStatus = "signature_not_checked"
+    binding_status: BindingStatus = "unknown"
 
     @classmethod
     def from_json(cls, value: object) -> "ServiceEntry | None":
@@ -133,6 +147,7 @@ class ServiceEntry:
                 "signature_status",
                 "signature_not_checked",
             )
+            binding_status = value.get("binding_status", "unknown")
         except KeyError:
             return None
 
@@ -169,6 +184,11 @@ class ServiceEntry:
             or signature_status not in SIGNATURE_STATUSES
         ):
             return None
+        if (
+            not isinstance(binding_status, str)
+            or binding_status not in BINDING_STATUSES
+        ):
+            return None
         return cls(
             service_name=service_name,
             provider=provider,
@@ -185,6 +205,7 @@ class ServiceEntry:
             trust_state=trust_state,
             accepted_limited=accepted_limited,
             signature_status=signature_status,
+            binding_status=binding_status,
         )
 
 
@@ -210,6 +231,7 @@ class AwarenessStore:
         node_name: str,
         expires: int,
         now: int | None = None,
+        fingerprint: str | None = None,
     ) -> NodeEntry:
         self.local_node_id = node_id
         entry = NodeEntry(
@@ -221,6 +243,8 @@ class AwarenessStore:
             is_local=True,
             seq=0,
             trust_state="privileged",
+            fingerprint=fingerprint,
+            binding_status="bound",
         )
         self._store_entry(entry)
         return entry
@@ -233,6 +257,7 @@ class AwarenessStore:
         trust_state: TrustState = "unknown",
         accepted_limited: bool = False,
         signature_status: SignatureStatus = "signature_not_checked",
+        binding_status: BindingStatus = "unknown",
     ) -> AwarenessUpdate:
         if knowledge_object.get("type") == "SERVICE":
             return self._update_service(
@@ -241,13 +266,14 @@ class AwarenessStore:
                 trust_state=trust_state,
                 accepted_limited=accepted_limited,
                 signature_status=signature_status,
+                binding_status=binding_status,
             )
 
         node_data = _node_data_from_knowledge_object(knowledge_object)
         if node_data is None:
             return AwarenessUpdate("ignored", None)
 
-        node_id, node_name, expires, seq = node_data
+        node_id, node_name, fingerprint, expires, seq = node_data
         seen_at = _epoch(now)
         if seen_at > expires:
             return AwarenessUpdate("ignored", None)
@@ -267,17 +293,24 @@ class AwarenessStore:
             existing.seq = seq
             existing.trust_state = trust_state
             existing.signature_status = signature_status
+            existing.fingerprint = fingerprint
+            existing.binding_status = binding_status
             if old_name != node_name:
                 self._node_names.pop(old_name, None)
             self._node_names[node_name] = node_id
-            self._set_service_provider_name(node_id, node_name)
+            self._set_service_provider_identity(
+                node_id,
+                node_name,
+                binding_status,
+            )
             LOGGER.info(
-                "Node refreshed: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s",
+                "Node refreshed: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s binding_status=%s",
                 node_name,
                 node_id,
                 seq,
                 expires,
                 signature_status,
+                binding_status,
             )
             return AwarenessUpdate("refreshed", existing)
 
@@ -291,15 +324,18 @@ class AwarenessStore:
             seq=seq,
             trust_state=trust_state,
             signature_status=signature_status,
+            fingerprint=fingerprint,
+            binding_status=binding_status,
         )
         self._store_entry(entry)
         LOGGER.info(
-            "Node discovered: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s",
+            "Node discovered: node_name=%s node_id=%s seq=%s expires=%s signature_status=%s binding_status=%s",
             node_name,
             node_id,
             seq,
             expires,
             signature_status,
+            binding_status,
         )
         return AwarenessUpdate("discovered", entry)
 
@@ -431,6 +467,7 @@ class AwarenessStore:
                 provider_entry = store._nodes_by_id.get(entry.provider)
                 if provider_entry is not None:
                     entry.provider_name = provider_entry.node_name
+                    entry.binding_status = provider_entry.binding_status
                 store._services[(entry.provider, entry.service_name)] = entry
         return store
 
@@ -440,12 +477,22 @@ class AwarenessStore:
             self._node_names.pop(existing.node_name, None)
         self._nodes_by_id[entry.node_id] = entry
         self._node_names[entry.node_name] = entry.node_id
-        self._set_service_provider_name(entry.node_id, entry.node_name)
+        self._set_service_provider_identity(
+            entry.node_id,
+            entry.node_name,
+            entry.binding_status,
+        )
 
-    def _set_service_provider_name(self, node_id: str, node_name: str) -> None:
+    def _set_service_provider_identity(
+        self,
+        node_id: str,
+        node_name: str,
+        binding_status: BindingStatus,
+    ) -> None:
         for service in self._services.values():
             if service.provider == node_id:
                 service.provider_name = node_name
+                service.binding_status = binding_status
 
     def _update_service(
         self,
@@ -455,6 +502,7 @@ class AwarenessStore:
         trust_state: TrustState = "unknown",
         accepted_limited: bool = False,
         signature_status: SignatureStatus = "signature_not_checked",
+        binding_status: BindingStatus = "unknown",
     ) -> AwarenessUpdate:
         service_data = _service_data_from_knowledge_object(knowledge_object)
         if service_data is None:
@@ -470,6 +518,8 @@ class AwarenessStore:
         existing = self._services.get(key)
         provider_entry = self._nodes_by_id.get(provider)
         provider_name = provider_entry.node_name if provider_entry is not None else None
+        if provider_entry is not None and binding_status == "unknown":
+            binding_status = provider_entry.binding_status
         if existing is not None:
             if seq < existing.seq:
                 return AwarenessUpdate("ignored", existing)
@@ -485,6 +535,7 @@ class AwarenessStore:
             existing.trust_state = trust_state
             existing.accepted_limited = accepted_limited
             existing.signature_status = signature_status
+            existing.binding_status = binding_status
             LOGGER.info(
                 "SERVICE refreshed: service_name=%s provider=%s seq=%s expires=%s signature_status=%s",
                 service_name,
@@ -511,6 +562,7 @@ class AwarenessStore:
             trust_state=trust_state,
             accepted_limited=accepted_limited,
             signature_status=signature_status,
+            binding_status=binding_status,
         )
         self._services[key] = entry
         LOGGER.info(
@@ -568,7 +620,7 @@ class DuplicateCache:
 
 def _node_data_from_knowledge_object(
     knowledge_object: dict[str, Any],
-) -> tuple[str, str, int, int] | None:
+) -> tuple[str, str, str | None, int, int] | None:
     if knowledge_object.get("type") != "NODE":
         return None
 
@@ -591,12 +643,15 @@ def _node_data_from_knowledge_object(
 
     payload_node_id = payload.get("node_id")
     payload_node_name = payload.get("node_name")
+    fingerprint = payload.get("fingerprint")
     if payload_node_id != origin:
         return None
     if payload_node_name != subject:
         return None
+    if fingerprint is not None and not isinstance(fingerprint, str):
+        return None
 
-    return origin, subject, expires, seq
+    return origin, subject, fingerprint, expires, seq
 
 
 def _service_data_from_knowledge_object(

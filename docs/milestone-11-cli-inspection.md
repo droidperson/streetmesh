@@ -39,12 +39,21 @@ expired status.
 python streetmeshd.py --data-dir .\data --list-trust
 ~~~
 
-Trust entries are displayed as a readable node ID and state table. Existing
-administration commands remain available:
+Trust entries are displayed with node name when bound, node ID, trust state,
+fingerprint when available, binding status, and trust timestamps. Existing raw
+node-ID administration commands remain available:
 
 ~~~powershell
 python streetmeshd.py --data-dir .\data --trust-node <NODE_ID>
 python streetmeshd.py --data-dir .\data --block-node <NODE_ID>
+~~~
+
+Milestone 17 also supports resolved-name administration and binding detail:
+
+~~~powershell
+python streetmeshd.py --data-dir .\data --trust-node-name <NODE_NAME>
+python streetmeshd.py --data-dir .\data --block-node-name <NODE_NAME>
+python streetmeshd.py --data-dir .\data --show-trust <NODE_NAME_OR_ID>
 ~~~
 
 Inspection reads identity.json, awareness.json, and trust.json from the selected

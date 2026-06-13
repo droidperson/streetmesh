@@ -42,8 +42,14 @@ def load_inspection_state(data_dir: Path) -> InspectionState:
     for node in awareness.list_nodes():
         if node.node_id == local_node_id:
             node.trust_state = "privileged"
+            node.binding_status = "bound"
         elif node.node_id in explicit_trust:
             node.trust_state = explicit_trust[node.node_id]
+        if node.node_id != local_node_id:
+            node.binding_status = trust.binding_status_for_claim(
+                node.node_id,
+                node.node_name,
+            )
     for service in awareness.list_services():
         if service.provider in explicit_trust:
             service.trust_state = explicit_trust[service.provider]
@@ -52,6 +58,17 @@ def load_inspection_state(data_dir: Path) -> InspectionState:
                 "observed",
                 "candidate",
             }
+        provider = awareness.get_by_node_id(service.provider)
+        if provider is not None:
+            service.provider_name = provider.node_name
+            service.binding_status = provider.binding_status
+        else:
+            trust_entry = trust.get_entry(service.provider)
+            if trust_entry is not None:
+                service.provider_name = (
+                    trust_entry.node_name or service.provider_name
+                )
+                service.binding_status = trust_entry.binding_status
     return InspectionState(
         identity=identity,
         awareness=awareness,
@@ -85,6 +102,7 @@ def format_nodes(nodes: Iterable[NodeEntry], *, now: int | None = None) -> str:
             entry.node_id,
             entry.trust_state,
             entry.signature_status,
+            entry.binding_status,
             str(entry.first_seen),
             str(entry.last_seen),
             str(entry.expires),
@@ -98,6 +116,7 @@ def format_nodes(nodes: Iterable[NodeEntry], *, now: int | None = None) -> str:
             "node_id",
             "trust_state",
             "signature_status",
+            "binding_status",
             "first_seen",
             "last_seen",
             "expires",
@@ -127,6 +146,7 @@ def format_services(
                 entry.provider,
                 trust,
                 entry.signature_status,
+                entry.binding_status,
                 entry.endpoint or "-",
                 entry.protocol or "-",
                 str(entry.expires),
@@ -139,6 +159,7 @@ def format_services(
             "provider",
             "trust",
             "signature_status",
+            "binding_status",
             "endpoint",
             "protocol",
             "expires",
@@ -150,11 +171,65 @@ def format_services(
 
 
 def format_trust(entries: Iterable[TrustEntry]) -> str:
-    rows = [[entry.node_id, entry.state] for entry in entries]
+    rows = [
+        [
+            entry.node_name or "-",
+            entry.node_id,
+            entry.state,
+            entry.fingerprint or "-",
+            entry.binding_status,
+            _optional_number(entry.first_trusted),
+            _optional_number(entry.last_confirmed),
+        ]
+        for entry in entries
+    ]
     return _format_table(
-        ["node_id", "state"],
+        [
+            "node_name",
+            "node_id",
+            "trust_state",
+            "fingerprint",
+            "binding_status",
+            "first_trusted",
+            "last_confirmed",
+        ],
         rows,
         empty_message="No trust entries.",
+    )
+
+
+def format_trust_detail(entry: TrustEntry) -> str:
+    return _format_values(
+        [
+            ("node_name", entry.node_name or "-"),
+            ("node_id", entry.node_id),
+            ("trust_state", entry.state),
+            ("fingerprint", entry.fingerprint or "-"),
+            ("binding_status", entry.binding_status),
+            ("first_trusted", _optional_number(entry.first_trusted)),
+            ("last_confirmed", _optional_number(entry.last_confirmed)),
+        ]
+    )
+
+
+def format_trust_change(
+    entry: TrustEntry,
+    *,
+    previous_state: str,
+    signature_status: str,
+) -> str:
+    return _format_values(
+        [
+            ("node_name", entry.node_name or "-"),
+            ("node_id", entry.node_id),
+            ("previous_trust_state", previous_state),
+            ("new_trust_state", entry.state),
+            ("signature_status", signature_status),
+            ("binding_status", entry.binding_status),
+            ("fingerprint", entry.fingerprint or "-"),
+            ("first_trusted", _optional_number(entry.first_trusted)),
+            ("last_confirmed", _optional_number(entry.last_confirmed)),
+        ]
     )
 
 
@@ -165,6 +240,7 @@ def format_node_resolution(result: NodeResolution) -> str:
         ("node_id", result.node_id or "-"),
         ("trust_state", result.trust_state or "-"),
         ("signature_status", result.signature_status or "-"),
+        ("binding_status", result.binding_status or "-"),
         ("first_seen", _optional_number(result.first_seen)),
         ("last_seen", _optional_number(result.last_seen)),
         ("expires", _optional_number(result.expires)),
@@ -180,13 +256,22 @@ def format_node_resolution(result: NodeResolution) -> str:
                 candidate.node_id,
                 candidate.trust_state,
                 candidate.signature_status,
+                candidate.binding_status,
                 candidate.status,
                 "yes" if candidate.usable else "no",
             ]
             for candidate in result.candidates
         ]
         output += "\n\ncandidates\n" + _format_table(
-            ["rank", "node_id", "trust_state", "signature_status", "status", "usable"],
+            [
+                "rank",
+                "node_id",
+                "trust_state",
+                "signature_status",
+                "binding_status",
+                "status",
+                "usable",
+            ],
             rows,
             empty_message="No candidates.",
         )
@@ -203,6 +288,7 @@ def format_service_resolution(result: ServiceResolution) -> str:
         ("protocol", result.protocol or "-"),
         ("trust_state", result.trust_state or "-"),
         ("signature_status", result.signature_status or "-"),
+        ("binding_status", result.binding_status or "-"),
         ("expires", _optional_number(result.expires)),
         ("status", result.status or "-"),
         ("candidate_count", str(len(result.candidates))),
@@ -217,6 +303,7 @@ def format_service_resolution(result: ServiceResolution) -> str:
                 candidate.provider_node_name or "-",
                 candidate.trust_state,
                 candidate.signature_status,
+                candidate.binding_status,
                 candidate.status,
                 "yes" if candidate.usable else "no",
                 "yes" if candidate.accepted_limited else "no",
@@ -232,6 +319,7 @@ def format_service_resolution(result: ServiceResolution) -> str:
                 "provider_name",
                 "trust_state",
                 "signature_status",
+                "binding_status",
                 "status",
                 "usable",
                 "limited",

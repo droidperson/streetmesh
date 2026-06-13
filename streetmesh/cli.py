@@ -18,6 +18,8 @@ from .inspection import (
     format_service_resolution,
     format_status,
     format_trust,
+    format_trust_change,
+    format_trust_detail,
     load_inspection_state,
 )
 from .resolver import resolve_node, resolve_service
@@ -117,6 +119,21 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="NODE_ID",
         help="mark a node ID blocked and exit",
     )
+    state_actions.add_argument(
+        "--trust-node-name",
+        metavar="NODE_NAME",
+        help="resolve, bind, and trust a node name, then exit",
+    )
+    state_actions.add_argument(
+        "--block-node-name",
+        metavar="NODE_NAME",
+        help="resolve, bind, and block a node name, then exit",
+    )
+    state_actions.add_argument(
+        "--show-trust",
+        metavar="NODE_NAME_OR_ID",
+        help="show one persisted trust binding and exit",
+    )
     parser.add_argument(
         "--version",
         action="version",
@@ -156,6 +173,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         or args.resolve_service
         or args.trust_node
         or args.block_node
+        or args.trust_node_name
+        or args.block_node_name
+        or args.show_trust
     ):
         try:
             if args.trust_node:
@@ -166,6 +186,49 @@ def main(argv: Sequence[str] | None = None) -> int:
                 trust_store = TrustStore.load(config.node.data_dir / "trust.json")
                 trust_store.add_blocked(args.block_node)
                 print(f"Blocked node: {args.block_node}")
+            elif args.trust_node_name or args.block_node_name:
+                node_name = args.trust_node_name or args.block_node_name
+                state = load_inspection_state(config.node.data_dir)
+                result = resolve_node(state.awareness, node_name)
+                if result.resolution_status != "resolved" or result.chosen is None:
+                    action = "Trust" if args.trust_node_name else "Block"
+                    print(
+                        f"{action} by name failed: node_name={node_name} "
+                        f"resolution_status={result.resolution_status} "
+                        f"reason={result.reason}"
+                    )
+                    return 1
+                trust_store = TrustStore.load(
+                    config.node.data_dir / "trust.json"
+                )
+                previous_state = trust_store.get_state(result.node_id)
+                new_state = "trusted" if args.trust_node_name else "blocked"
+                entry = trust_store.bind_name(
+                    result.node_id,
+                    node_name,
+                    new_state,
+                    fingerprint=result.fingerprint,
+                )
+                print(
+                    format_trust_change(
+                        entry,
+                        previous_state=previous_state,
+                        signature_status=result.signature_status
+                        or "signature_not_checked",
+                    )
+                )
+            elif args.show_trust:
+                trust_store = TrustStore.load(
+                    config.node.data_dir / "trust.json",
+                    create_if_missing=False,
+                )
+                entry = trust_store.get_entry(args.show_trust)
+                if entry is None:
+                    entry = trust_store.get_by_name(args.show_trust)
+                if entry is None:
+                    print(f"Trust entry not found: {args.show_trust}")
+                    return 1
+                print(format_trust_detail(entry))
             elif args.list_trust:
                 trust_store = TrustStore.load(
                     config.node.data_dir / "trust.json",

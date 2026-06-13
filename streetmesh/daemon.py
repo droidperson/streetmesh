@@ -104,6 +104,7 @@ class StreetMeshDaemon:
             node_id=identity.node_id,
             node_name=identity.node_name,
             expires=int(time.time()) + 120,
+            fingerprint=identity.fingerprint,
         )
         awareness.save()
 
@@ -234,6 +235,34 @@ class StreetMeshDaemon:
             local_node_id=awareness.local_node_id,
             local_signing_secret=local_signing_secret,
         )
+        active_trust_store = trust_store or TrustStore()
+        binding_status = "unknown"
+        if knowledge_object.get("type") == "NODE":
+            payload = knowledge_object.get("payload")
+            node_name = payload.get("node_name") if isinstance(payload, dict) else None
+            binding_status = active_trust_store.binding_status_for_claim(
+                knowledge_object.get("origin"),
+                node_name,
+            )
+            if binding_status == "name_conflict":
+                LOGGER.warning(
+                    "Trusted name conflict: node_name=%s claimant_node_id=%s ko_id=%s",
+                    node_name,
+                    knowledge_object.get("origin"),
+                    knowledge_object.get("ko_id"),
+                )
+        elif knowledge_object.get("type") == "SERVICE":
+            provider = awareness.get_by_node_id(
+                str(knowledge_object.get("origin"))
+            )
+            if provider is not None:
+                binding_status = provider.binding_status
+            else:
+                trust_entry = active_trust_store.get_entry(
+                    knowledge_object.get("origin")
+                )
+                if trust_entry is not None:
+                    binding_status = trust_entry.binding_status
 
         if (
             knowledge_object.get("origin") == awareness.local_node_id
@@ -247,7 +276,6 @@ class StreetMeshDaemon:
             )
             return
 
-        active_trust_store = trust_store or TrustStore()
         active_policy = policy or ReviewPolicy()
         trust_state = active_trust_store.get_state(knowledge_object.get("origin"))
         decision = active_policy.decide(
@@ -283,6 +311,7 @@ class StreetMeshDaemon:
             trust_state=trust_state,
             accepted_limited=decision.action == "accepted-limited",
             signature_status=decision.signature_status,
+            binding_status=binding_status,
         )
         if update.status != "ignored":
             awareness.save()
@@ -339,6 +368,7 @@ class StreetMeshDaemon:
                         local_node_id=identity.node_id,
                         local_signing_secret=identity.signing_secret,
                     ),
+                    binding_status="bound",
                 )
                 awareness.save()
                 next_node_announcement = (
@@ -360,6 +390,7 @@ class StreetMeshDaemon:
                             local_node_id=identity.node_id,
                             local_signing_secret=identity.signing_secret,
                         ),
+                        binding_status="bound",
                     )
                 if service_announcements:
                     awareness.save()
