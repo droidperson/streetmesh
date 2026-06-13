@@ -105,6 +105,9 @@ class StreetMeshDaemon:
             node_name=identity.node_name,
             expires=int(time.time()) + 120,
             fingerprint=identity.fingerprint,
+            public_key_id=identity.public_key_id,
+            public_key_algorithm=identity.public_key_algorithm,
+            public_key_status=identity.public_key_status,
         )
         awareness.save()
 
@@ -149,9 +152,10 @@ class StreetMeshDaemon:
                 "node_id": identity.node_id,
                 "node_name": identity.node_name,
                 "fingerprint": identity.fingerprint,
+                **identity.public_identity_payload(),
             },
             seq=self._seq,
-            signing_secret=identity.signing_secret,
+            signer=identity.create_signer(),
         )
         encoded = encode_knowledge_object(knowledge_object)
         transport.send_broadcast(
@@ -180,7 +184,7 @@ class StreetMeshDaemon:
 
         announcements = services.create_announcements(
             provider=identity.node_id,
-            signing_secret=identity.signing_secret,
+            signer=identity.create_signer(),
         )
         for knowledge_object in announcements:
             transport.send_broadcast(

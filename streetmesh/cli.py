@@ -208,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     node_name,
                     new_state,
                     fingerprint=result.fingerprint,
+                    public_key_id=result.public_key_id,
                 )
                 print(
                     format_trust_change(

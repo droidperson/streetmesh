@@ -34,10 +34,13 @@ _TRUST_RANK = {
     "revoked": 0,
 }
 _SIGNATURE_RANK = {
-    "signed_self_verified": 5,
-    "signed_unverified_remote": 4,
-    "unsigned": 3,
-    "signature_not_checked": 2,
+    "signed_self_verified": 8,
+    "signed_unverified_remote": 7,
+    "unsigned": 6,
+    "signature_not_checked": 5,
+    "public_key_planned": 4,
+    "public_key_missing": 3,
+    "public_key_unsupported": 2,
     "signature_unsupported": 1,
     "signature_invalid": 0,
 }
@@ -50,6 +53,7 @@ class NodeCandidate:
     trust_state: TrustState
     signature_status: SignatureStatus
     fingerprint: str | None
+    public_key_id: str | None
     binding_status: BindingStatus
     first_seen: int
     last_seen: int
@@ -82,6 +86,10 @@ class NodeResolution:
     @property
     def fingerprint(self) -> str | None:
         return self.chosen.fingerprint if self.chosen is not None else None
+
+    @property
+    def public_key_id(self) -> str | None:
+        return self.chosen.public_key_id if self.chosen is not None else None
 
     @property
     def binding_status(self) -> BindingStatus | None:
@@ -317,6 +325,7 @@ def _rank_nodes(entries: list[NodeEntry], now: int) -> list[NodeCandidate]:
             trust_state=entry.trust_state,
             signature_status=entry.signature_status,
             fingerprint=entry.fingerprint,
+            public_key_id=entry.public_key_id,
             binding_status=entry.binding_status,
             first_seen=entry.first_seen,
             last_seen=entry.last_seen,

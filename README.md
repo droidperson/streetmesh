@@ -8,7 +8,7 @@ StreetMesh is a mycelial-inspired distributed awareness network that enables aut
 
 **Version:** v0.1.0
 
-Milestone 17 Complete
+Milestone 18 Complete
 
 ### Implemented Features
 
@@ -26,6 +26,7 @@ Milestone 17 Complete
 * Signature-aware trust policy and inspection
 * Read-only node-name and service-provider resolution
 * Trust promotion and stable node-name binding
+* Public-key-ready identity metadata and signer/verifier abstraction
 
 ### Validated Platforms
 
@@ -46,6 +47,7 @@ Milestone 17 Complete
 * Persisted signature status for node and service awareness
 * Ranked resolution with ambiguity, expiry, and limited-trust reporting
 * Trusted-name conflict detection and continuity protection
+* Safe public identity awareness without secret or private-key disclosure
 
 ## Vision
 
@@ -66,7 +68,7 @@ StreetMesh is inspired by biological mycelial networks, where awareness propagat
 
 
 
-StreetMesh v0.1 has completed Milestone 17. Nodes broadcast signed NODE and SERVICE
+StreetMesh v0.1 has completed Milestone 18. Nodes broadcast signed NODE and SERVICE
 Knowledge Objects over UDP, maintain a persistent Awareness Store, suppress
 duplicate objects, refresh and expire known nodes and services, and gossip
 policy-approved remote objects with a decreasing hop TTL. Local review-mode
@@ -77,6 +79,9 @@ Persisted awareness can now resolve node names and rank service providers while
 reporting limited trust, ambiguity, rejection, expiry, or missing results.
 Users can now trust or block a resolved node name, binding it to a stable node
 ID so conflicting claims remain visible without replacing user intent.
+Identity version 2 adds safe public-key metadata and pluggable signing and
+verification interfaces while HMAC-SHA256 remains the only active algorithm.
+No public-key signature is generated or accepted as verified yet.
 
 Persisted state can be inspected without starting the daemon:
 
@@ -136,6 +141,7 @@ streetmesh/                    StreetMesh package
   directory.py                 Awareness Store for nodes and services
   gossip.py                    Gossip forwarding policy
   identity.py                  Node identity loading and creation
+  signing.py                   Signer and verifier abstractions
   inspection.py                Persisted-state CLI formatting
   protocol.py                  Knowledge Object creation and validation
   policy.py                    Review-mode claim decisions
@@ -179,6 +185,8 @@ docs/
                                Node and service resolution and ranking
   milestone-17-trust-promotion-name-binding.md
                                Trust-by-name workflow and conflict handling
+  milestone-18-public-key-identity-model.md
+                               Public-key-ready identity and signing model
 ```
 
 ## Milestone 7 Acceptance Test
@@ -259,9 +267,17 @@ See the [trust promotion and name binding guide](docs/milestone-17-trust-promoti
 for trusting and blocking resolved node names, enriched trust records, binding
 conflict behavior, and the relationship between user trust and signature state.
 
+## Milestone 18 Public-Key Identity Model
+
+See the [public-key identity model](docs/milestone-18-public-key-identity-model.md)
+for identity version 2, signer and verifier extension points, safe NODE identity
+metadata, HMAC compatibility, and the planned migration to real public-key
+signatures.
+
 ## Development Notes
 
-StreetMesh v0.1 remains dependency-free. Milestone 17 adds explicit local
-trust-by-name without treating remote HMACs as public proof. Public-key
+StreetMesh v0.1 remains dependency-free. Milestone 18 prepares identities and
+signature handling for a reviewed public-key backend without treating remote
+HMACs as public proof or implementing homemade cryptography. Public-key
 cryptography, certificates, invite tokens, service adapters, service
 invocation, and a full administration UI are not implemented.

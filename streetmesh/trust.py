@@ -43,6 +43,7 @@ class TrustEntry:
     first_trusted: int | None = None
     last_confirmed: int | None = None
     binding_status: BindingStatus = "unbound"
+    public_key_id: str | None = None
 
     @property
     def trust_state(self) -> TrustState:
@@ -87,6 +88,7 @@ class TrustStore:
                 value.get("state", value.get("trust_state")),
                 node_name=value.get("node_name"),
                 fingerprint=value.get("fingerprint"),
+                public_key_id=value.get("public_key_id"),
                 first_trusted=value.get("first_trusted"),
                 last_confirmed=value.get("last_confirmed"),
                 binding_status=value.get("binding_status", "unbound"),
@@ -124,6 +126,7 @@ class TrustStore:
         *,
         node_name: object = None,
         fingerprint: object = None,
+        public_key_id: object = None,
         first_trusted: object = None,
         last_confirmed: object = None,
         binding_status: object = None,
@@ -136,6 +139,7 @@ class TrustStore:
         existing = self._entries.get(node_id)
         resolved_name = _optional_string("node_name", node_name)
         resolved_fingerprint = _optional_string("fingerprint", fingerprint)
+        resolved_public_key_id = _optional_string("public_key_id", public_key_id)
         resolved_first_trusted = _optional_epoch("first_trusted", first_trusted)
         resolved_last_confirmed = _optional_epoch("last_confirmed", last_confirmed)
         resolved_binding_status = binding_status
@@ -163,6 +167,11 @@ class TrustStore:
                 if resolved_fingerprint is not None
                 else existing.fingerprint if existing is not None else None
             ),
+            public_key_id=(
+                resolved_public_key_id
+                if resolved_public_key_id is not None
+                else existing.public_key_id if existing is not None else None
+            ),
             first_trusted=(
                 resolved_first_trusted
                 if resolved_first_trusted is not None
@@ -186,6 +195,7 @@ class TrustStore:
         *,
         node_name: str | None = None,
         fingerprint: str | None = None,
+        public_key_id: str | None = None,
         now: int | None = None,
     ) -> TrustEntry:
         if node_name is not None:
@@ -194,9 +204,15 @@ class TrustStore:
                 node_name,
                 "trusted",
                 fingerprint=fingerprint,
+                public_key_id=public_key_id,
                 now=now,
             )
-        return self.set_state(node_id, "trusted")
+        return self.set_state(
+            node_id,
+            "trusted",
+            fingerprint=fingerprint,
+            public_key_id=public_key_id,
+        )
 
     def add_blocked(
         self,
@@ -204,6 +220,7 @@ class TrustStore:
         *,
         node_name: str | None = None,
         fingerprint: str | None = None,
+        public_key_id: str | None = None,
         now: int | None = None,
     ) -> TrustEntry:
         if node_name is not None:
@@ -212,9 +229,15 @@ class TrustStore:
                 node_name,
                 "blocked",
                 fingerprint=fingerprint,
+                public_key_id=public_key_id,
                 now=now,
             )
-        return self.set_state(node_id, "blocked")
+        return self.set_state(
+            node_id,
+            "blocked",
+            fingerprint=fingerprint,
+            public_key_id=public_key_id,
+        )
 
     def bind_name(
         self,
@@ -223,6 +246,7 @@ class TrustStore:
         state: TrustState,
         *,
         fingerprint: str | None = None,
+        public_key_id: str | None = None,
         now: int | None = None,
     ) -> TrustEntry:
         existing_binding = self.get_by_name(node_name)
@@ -240,6 +264,7 @@ class TrustStore:
             state,
             node_name=node_name,
             fingerprint=fingerprint,
+            public_key_id=public_key_id,
             first_trusted=first_trusted,
             last_confirmed=current_time,
             binding_status="bound",

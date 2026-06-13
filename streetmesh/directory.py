@@ -37,6 +37,9 @@ class NodeEntry:
     signature_status: SignatureStatus = "signature_not_checked"
     fingerprint: str | None = None
     binding_status: BindingStatus = "unknown"
+    public_key_id: str | None = None
+    public_key_algorithm: str | None = None
+    public_key_status: str | None = None
 
     @classmethod
     def from_json(cls, value: object) -> "NodeEntry | None":
@@ -57,6 +60,9 @@ class NodeEntry:
                 "signature_not_checked",
             )
             fingerprint = value.get("fingerprint")
+            public_key_id = value.get("public_key_id")
+            public_key_algorithm = value.get("public_key_algorithm")
+            public_key_status = value.get("public_key_status")
             binding_status = value.get("binding_status", "unknown")
         except KeyError:
             return None
@@ -82,7 +88,15 @@ class NodeEntry:
             or signature_status not in SIGNATURE_STATUSES
         ):
             return None
-        if fingerprint is not None and not isinstance(fingerprint, str):
+        if any(
+            item is not None and not isinstance(item, str)
+            for item in (
+                fingerprint,
+                public_key_id,
+                public_key_algorithm,
+                public_key_status,
+            )
+        ):
             return None
         if (
             not isinstance(binding_status, str)
@@ -101,6 +115,9 @@ class NodeEntry:
             trust_state=trust_state,
             signature_status=signature_status,
             fingerprint=fingerprint,
+            public_key_id=public_key_id,
+            public_key_algorithm=public_key_algorithm,
+            public_key_status=public_key_status,
             binding_status=binding_status,
         )
 
@@ -232,6 +249,9 @@ class AwarenessStore:
         expires: int,
         now: int | None = None,
         fingerprint: str | None = None,
+        public_key_id: str | None = None,
+        public_key_algorithm: str | None = None,
+        public_key_status: str | None = None,
     ) -> NodeEntry:
         self.local_node_id = node_id
         entry = NodeEntry(
@@ -244,6 +264,9 @@ class AwarenessStore:
             seq=0,
             trust_state="privileged",
             fingerprint=fingerprint,
+            public_key_id=public_key_id,
+            public_key_algorithm=public_key_algorithm,
+            public_key_status=public_key_status,
             binding_status="bound",
         )
         self._store_entry(entry)
@@ -273,7 +296,16 @@ class AwarenessStore:
         if node_data is None:
             return AwarenessUpdate("ignored", None)
 
-        node_id, node_name, fingerprint, expires, seq = node_data
+        (
+            node_id,
+            node_name,
+            fingerprint,
+            public_key_id,
+            public_key_algorithm,
+            public_key_status,
+            expires,
+            seq,
+        ) = node_data
         seen_at = _epoch(now)
         if seen_at > expires:
             return AwarenessUpdate("ignored", None)
@@ -294,6 +326,9 @@ class AwarenessStore:
             existing.trust_state = trust_state
             existing.signature_status = signature_status
             existing.fingerprint = fingerprint
+            existing.public_key_id = public_key_id
+            existing.public_key_algorithm = public_key_algorithm
+            existing.public_key_status = public_key_status
             existing.binding_status = binding_status
             if old_name != node_name:
                 self._node_names.pop(old_name, None)
@@ -325,6 +360,9 @@ class AwarenessStore:
             trust_state=trust_state,
             signature_status=signature_status,
             fingerprint=fingerprint,
+            public_key_id=public_key_id,
+            public_key_algorithm=public_key_algorithm,
+            public_key_status=public_key_status,
             binding_status=binding_status,
         )
         self._store_entry(entry)
@@ -620,7 +658,16 @@ class DuplicateCache:
 
 def _node_data_from_knowledge_object(
     knowledge_object: dict[str, Any],
-) -> tuple[str, str, str | None, int, int] | None:
+) -> tuple[
+    str,
+    str,
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    int,
+    int,
+] | None:
     if knowledge_object.get("type") != "NODE":
         return None
 
@@ -644,14 +691,34 @@ def _node_data_from_knowledge_object(
     payload_node_id = payload.get("node_id")
     payload_node_name = payload.get("node_name")
     fingerprint = payload.get("fingerprint")
+    public_key_id = payload.get("public_key_id")
+    public_key_algorithm = payload.get("public_key_algorithm")
+    public_key_status = payload.get("public_key_status")
     if payload_node_id != origin:
         return None
     if payload_node_name != subject:
         return None
-    if fingerprint is not None and not isinstance(fingerprint, str):
+    if any(
+        item is not None and not isinstance(item, str)
+        for item in (
+            fingerprint,
+            public_key_id,
+            public_key_algorithm,
+            public_key_status,
+        )
+    ):
         return None
 
-    return origin, subject, fingerprint, expires, seq
+    return (
+        origin,
+        subject,
+        fingerprint,
+        public_key_id,
+        public_key_algorithm,
+        public_key_status,
+        expires,
+        seq,
+    )
 
 
 def _service_data_from_knowledge_object(

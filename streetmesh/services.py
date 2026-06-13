@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .protocol import create_service_knowledge_object
+from .signing import Signer
 
 
 class ServiceConfigError(ValueError):
@@ -139,6 +140,7 @@ class ServiceRegistry:
         provider: str,
         now: int | None = None,
         signing_secret: str | None = None,
+        signer: Signer | None = None,
     ) -> list[dict[str, Any]]:
         announcements = []
         for service in self.list_local_services():
@@ -152,6 +154,7 @@ class ServiceRegistry:
                     seq=sequence,
                     now=now,
                     signing_secret=signing_secret,
+                    signer=signer,
                 )
             )
         return announcements
